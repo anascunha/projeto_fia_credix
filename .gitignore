@@ -1,0 +1,44 @@
+# Credenciais e variáveis locais
+.env
+.env
+
+# Dados brutos e arquivos gerados
+Dados/raw_data/
+Dados/clean_data/
+Dados/abt.csv
+
+# Modelos treinados
+models/
+*.pkl
+*.joblib
+
+# Métricas geradas
+metrics/
+
+# Logs
+logs/
+*.log
+build.log
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Arquivos locais do Airflow
+config/airflow.cfg
+airflow.cfg
+airflow.db
+
+# VS Code
+.vscode/
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db

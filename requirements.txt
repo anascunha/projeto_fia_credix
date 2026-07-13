@@ -1,0 +1,16 @@
+pandas
+numpy
+scikit-learn
+xgboost
+joblib
+matplotlib
+seaborn
+# Notebooks (EDA, avaliação)
+jupyter
+nbconvert
+# Deploy (API de predição)
+fastapi
+uvicorn
+pydantic
+# Obs.: Airflow NÃO entra aqui -- roda containerizado via Dockerfile.airflow
+# (imagem base apache/airflow:3.2.2 + app/requirements.txt), não via pip local.

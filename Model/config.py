@@ -1,0 +1,11 @@
+RANDOM_STATE = 42
+
+TEST_SIZE = 0.20
+
+TARGET = "TARGET"
+
+ID = "SK_ID_CURR"
+
+MODEL_FOLDER = "models"
+
+METRICS_FOLDER = "metrics"
