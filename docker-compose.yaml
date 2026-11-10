@@ -35,7 +35,9 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/DataPipeline:/opt/airflow/DataPipeline
     - ${AIRFLOW_PROJ_DIR:-.}/Model:/opt/airflow/Model
+    - ${AIRFLOW_PROJ_DIR:-.}/credix:/opt/airflow/credix
     - ${AIRFLOW_PROJ_DIR:-.}/models:/opt/airflow/models
+    - ${AIRFLOW_PROJ_DIR:-.}/metrics:/opt/airflow/metrics
     - ${AIRFLOW_PROJ_DIR:-.}/pipeline_orchestration.py:/opt/airflow/pipeline_orchestration.py
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
@@ -60,8 +62,15 @@ services:
       - "8000:8000"
 
     volumes:
-      - ./App:/app/App
+      - ./app:/app/app
+      - ./credix:/app/credix
       - ./models:/app/models
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
     restart: unless-stopped
   postgres:

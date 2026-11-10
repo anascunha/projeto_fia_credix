@@ -2,9 +2,12 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY app/requirements.txt /app/requirements.txt
+COPY requirements-pipeline.txt /app/requirements-pipeline.txt
+COPY app/requirements.txt /app/app/requirements.txt
 
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/app/requirements.txt
+
+COPY credix/ /app/credix/
 
 COPY app/ /app/app/
 

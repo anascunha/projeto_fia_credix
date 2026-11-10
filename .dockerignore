@@ -1,0 +1,9 @@
+.git
+.venv
+venv
+Dados
+logs
+metrics
+**/__pycache__
+**/*.ipynb
+.env
