@@ -1,309 +1,274 @@
-# Credix — Predição de Risco de Inadimplência
+# Credix — Score de Risco de Inadimplência
 
-## 1. Visão Geral
-A **Credix** é uma solução de Machine Learning criada para democratizar e reduzir o custo de acesso a modelos preditivos aplicados à concessão de crédito.
+[![Testes](https://github.com/anascunha/projeto_fia_credix/actions/workflows/testes.yml/badge.svg)](https://github.com/anascunha/projeto_fia_credix/actions/workflows/testes.yml)
 
-Por meio de uma API, empresas podem estimar a probabilidade de inadimplência e obter informações para apoiar suas decisões de crédito, sem a necessidade de investir tempo e recursos na construção, implantação e manutenção de um modelo próprio.
+Projeto em grupo do MBA em Big Data da FIA: um serviço de Machine Learning que estima o
+risco de inadimplência de uma solicitação de crédito e o expõe por uma API REST.
 
-A solução utiliza dados cadastrais, financeiros e informações do histórico de crédito para identificar padrões associados ao risco de inadimplência. Sua arquitetura contempla todo o ciclo de Machine Learning, incluindo preparação dos dados, treinamento, disponibilização do modelo, monitoramento e evolução contínua.
+## Resumo
 
-A proposta da Credix é funcionar como uma solução de **Machine Learning as a Service**, permitindo que diferentes empresas integrem inteligência preditiva aos seus processos de forma simples, escalável e economicamente acessível.
+**Problema.** Empresas que concedem crédito (fintechs, varejistas, cooperativas) precisam
+avaliar o risco de inadimplência de cada solicitação, mas construir e manter um modelo
+próprio é caro.
 
-Com a expansão da plataforma e a incorporação governada de novos dados e resultados reais, o modelo poderá ser continuamente monitorado e retreinado com informações mais amplas e diversificadas, aumentando seu potencial de generalização e adaptação a diferentes perfis de clientes e operações de crédito.
+**Solução.** Um pipeline de ponta a ponta sobre a base pública
+[Home Credit Default Risk](https://www.kaggle.com/competitions/home-credit-default-risk):
+engenharia de atributos (dados cadastrais + histórico de bureau), modelo **XGBoost**,
+orquestração com **Apache Airflow**, API **FastAPI** com regras de negócio e
+infraestrutura em **Docker Compose**.
 
-O projeto contempla as principais etapas do ciclo de vida de Machine Learning:
+**Resultados** (conjunto de teste com 61.503 clientes, 8,07% de inadimplentes):
 
-- preparação e tratamento dos dados;
-- engenharia de atributos;
-- construção da ABT — Analytical Base Table;
-- treinamento do modelo;
-- avaliação das métricas;
-- persistência do modelo treinado;
-- orquestração do pipeline com Apache Airflow;
-- disponibilização do modelo por meio de uma API REST desenvolvida com FastAPI;
-- conteinerização da infraestrutura com Docker Compose;
-- proposta de monitoramento do modelo;
-- proposta de monitoramento de Data Drift;
-- estratégia de retreinamento;
-- proposta de automações baseadas nas previsões;
-- integração futura com agentes de Inteligência Artificial.
+| ROC AUC | Recall | Precision | F1 |
+|---:|---:|---:|---:|
+| 0,71 | 0,66 | 0,14 | 0,23 |
+
+O modelo identifica 2 em cada 3 inadimplentes no limiar padrão. Os números estão na
+[seção 8](#8-métricas-do-modelo).
+
+**Como rodar** (com os CSVs do Kaggle em `Dados/raw_data/`):
+
+```bash
+pip install -r requirements.txt
+python pipeline_orchestration.py          # features -> ABT -> treino
+uvicorn app.main:app --port 8000          # API em http://localhost:8000/docs
+```
+
+Os testes rodam sem os dados do Kaggle: `pytest`. Passo a passo completo, incluindo
+Docker e Airflow, em [COMO_RODAR.md](COMO_RODAR.md).
+
+### O que está implementado e o que é proposta
+
+| Item | Status |
+|---|---|
+| Pipeline de dados (features, bureau, ABT) | ✅ Implementado |
+| Treino e avaliação do XGBoost, comparação com 3 algoritmos | ✅ Implementado |
+| Importância das features | ✅ Implementado (`metrics/importancia_features.csv` e notebook) |
+| API FastAPI (`/predict`, `/health`) com regras de negócio | ✅ Implementado |
+| DAG do Airflow (uma tarefa por etapa) | ✅ Implementado |
+| Docker Compose (API + Airflow) | ✅ Implementado |
+| Testes automatizados (pytest) e CI no GitHub Actions | ✅ Implementado |
+| Registro das previsões e monitoramento de performance | 📝 Proposta ([seção 14](#14-manutenção-e-monitoramento-proposta)) |
+| Monitoramento de Data Drift e retreino automático | 📝 Proposta ([seção 15](#15-estratégia-de-retreinamento-proposta)) |
+| SHAP, ações automatizadas e agentes de IA | 📝 Proposta ([seção 16](#16-plano-de-ações-automatizadas-proposta)) |
 
 ---
 
-## 2. Objetivo
+## 1. Visão Geral
 
-O objetivo do Credix é estimar a probabilidade de inadimplência de uma solicitação de crédito e classificar o nível de risco do cliente.
+A **Credix** é uma solução de Machine Learning criada para democratizar e reduzir o custo
+de acesso a modelos preditivos aplicados à concessão de crédito.
 
-A API recebe informações cadastrais e financeiras e retorna:
+Por meio de uma API, empresas podem obter um score de risco de inadimplência e informações
+para apoiar suas decisões de crédito, sem precisar investir na construção, implantação e
+manutenção de um modelo próprio. A proposta é funcionar como **Machine Learning as a
+Service**.
 
-- probabilidade estimada de inadimplência;
-- nível de risco calculado.
+O projeto cobre as principais etapas do ciclo de vida de Machine Learning:
 
-Exemplo de resposta:
+- preparação e tratamento dos dados;
+- engenharia de atributos;
+- construção da ABT (Analytical Base Table);
+- treinamento e avaliação do modelo;
+- persistência do modelo treinado;
+- orquestração do pipeline com Apache Airflow;
+- disponibilização do modelo por uma API REST em FastAPI;
+- conteinerização com Docker Compose;
+- testes automatizados e integração contínua;
+- propostas de monitoramento, retreino e automações com agentes de IA.
 
-```json
-{
-  "probabilidade_inadimplencia": 0.7409,
-  "nivel_risco": "alto"
-}
-```
+---
 
-As faixas de risco utilizadas são:
+## 2. Objetivo e saída da API
 
-| Probabilidade de inadimplência | Nível de risco |
+O objetivo do Credix é ordenar solicitações de crédito por risco de inadimplência e
+classificá-las em faixas de risco.
+
+A API recebe dados cadastrais e financeiros e retorna:
+
+| Campo | Descrição |
 |---|---|
-| Menor que 50% | Baixo |
-| Entre 50% e 70% | Médio |
-| Igual ou superior a 70% | Alto |
+| `score_risco` | Score do modelo, de 0 a 1. Quanto maior, maior o risco. |
+| `nivel_risco` | `baixo`, `medio` ou `alto` |
+| `regra_aplicada` | Regra de negócio que decidiu o risco sem consultar o modelo, se houver |
 
-Além da probabilidade gerada pelo modelo, regras de negócio podem ser utilizadas para tratar situações extremas.
+### Score, não probabilidade
 
-Por exemplo, quando o comprometimento da renda é igual ou superior a 100%, a solicitação é classificada diretamente como risco alto.
+O XGBoost é treinado com `scale_pos_weight=12` para compensar o desbalanceamento das classes
+(ver [seção 7](#7-treinamento-do-modelo)). Esse peso aumenta artificialmente a saída do
+`predict_proba`. No teste, cerca de 38% dos clientes recebem score ≥ 0,5, enquanto só 8% são
+inadimplentes (valor derivado de recall 0,6622 × 8,07% / precision 0,1416). Por isso o valor
+**não é tratado como probabilidade** de inadimplência, e sim como um score que ordena os
+clientes.
+
+### Faixas de risco definidas no conjunto de teste
+
+Os cortes das faixas são calculados pelo `Model/train.py` a partir da distribuição do score
+no conjunto de teste e salvos em `models/faixas_risco.json`:
+
+| Faixa | Clientes de teste na faixa |
+|---|---|
+| Baixo | 50% com menor score |
+| Médio | 30% seguintes |
+| Alto | 20% com maior score |
+
+Para cada faixa, o treino registra em `metrics/train_metrics.json` a **taxa de inadimplência
+observada** no teste. Essa taxa é a leitura correta de "chance de inadimplência" de um
+cliente da faixa. As proporções ficam em `credix/regras.py` (`QUANTIS_FAIXAS`) e podem ser
+ajustadas à política de crédito de cada cliente da Credix sem retreinar o modelo.
+
+### Regras de negócio
+
+Antes de consultar o modelo, a API aplica regras para situações extremas:
+
+| Condição | Resultado |
+|---|---|
+| Renda anual igual a zero | risco `alto` (`renda_nao_positiva`) |
+| Parcela anual maior ou igual à renda anual (comprometimento ≥ 100%) | risco `alto` (`parcela_maior_ou_igual_renda`) |
 
 ---
 
 ## 3. Fonte dos Dados
 
-O projeto utiliza dados da competição **Home Credit Default Risk**, disponibilizada na plataforma Kaggle.
-
-Os principais conjuntos de dados utilizados são:
+Base da competição **Home Credit Default Risk** (Kaggle):
 
 | Arquivo | Descrição |
 |---|---|
-| `application_train.csv` | Dados cadastrais, financeiros e informações das solicitações |
-| `bureau.csv` | Histórico de operações de crédito registradas para os clientes |
+| `application_train.csv` | Dados cadastrais, financeiros e da solicitação (307.511 clientes) |
+| `bureau.csv` | Histórico de créditos dos clientes em outras instituições (1.716.428 registros) |
 
-Os dados incluem informações relacionadas a:
-
-- renda;
-- valor solicitado;
-- valor da parcela;
-- valor do bem;
-- idade;
-- escolaridade;
-- estado civil;
-- tempo de emprego;
-- quantidade de créditos;
-- quantidade de créditos ativos;
-- valor total dos créditos;
-- valor total das dívidas;
-- histórico de crédito.
-
-A variável alvo utilizada no treinamento é a coluna `TARGET`.
-
-| TARGET | Significado |
-|---:|---|
-| `0` | Cliente não inadimplente |
-| `1` | Cliente inadimplente |
+A variável alvo é `TARGET`: `0` para cliente adimplente e `1` para inadimplente. A base é
+desbalanceada: **8,07%** de inadimplentes (`DataPipeline/exp_analysis.ipynb`).
 
 ---
 
 ## 4. Arquitetura da Solução
 
-A arquitetura contempla o fluxo completo, desde os dados de origem até a disponibilização do modelo como serviço de predição.
+<img width="1693" height="929" alt="Arquitetura do Credix" src="https://github.com/user-attachments/assets/bc3e90b1-b5f8-4d44-b803-f4961a849b33" />
 
-<img width="1693" height="929" alt="image" src="https://github.com/user-attachments/assets/bc3e90b1-b5f8-4d44-b803-f4961a849b33" />
+- **Apache Airflow** orquestra o pipeline de dados e treino.
+- **FastAPI** disponibiliza o modelo como serviço REST.
+- **Docker Compose** sobe a API e a stack do Airflow de forma integrada.
 
-O Apache Airflow é responsável pela orquestração do pipeline de dados e treinamento.
-
-A FastAPI disponibiliza o modelo como um serviço REST de predição.
-
-O Docker Compose gerencia os containers e permite executar os componentes da solução de forma integrada.
-
----
-## 5. Pipeline de Dados
-
-O pipeline de dados é responsável pela preparação das informações utilizadas pelo modelo.
-
-As etapas são executadas sequencialmente:
+Estrutura do repositório:
 
 ```text
-01_application_features.py
-              │
-              ▼
-02_bureau_features.py
-              │
-              ▼
-merge_abt.py
-              │
-              ▼
-Dados/abt.csv
+credix/           código compartilhado por treino e API (features, regras, modelo)
+DataPipeline/     scripts das etapas de dados + notebook de EDA
+Model/            treino, exemplo de predição + notebook de avaliação
+app/              API FastAPI
+dags/             DAG do Airflow
+tests/            testes pytest (com dados sintéticos)
+```
+
+---
+
+## 5. Pipeline de Dados
+
+```text
+01_application_features.py ──┐
+                             ├──> merge_abt.py ──> Dados/abt.csv ──> Model/train.py
+02_bureau_features.py ───────┘
 ```
 
 ### 5.1 Application Features
 
-O arquivo:
-
-```text
-DataPipeline/01_application_features.py
-```
-
-é responsável pelo tratamento das informações cadastrais e financeiras da base de solicitações.
-
-As principais atividades são:
-
-- seleção das colunas utilizadas;
-- tratamento de valores ausentes;
-- transformação das variáveis;
-- cálculo de novas features financeiras;
-- geração da base tratada.
+`DataPipeline/01_application_features.py` trata os dados cadastrais e financeiros:
+seleção das colunas, conversão de `DAYS_BIRTH`/`DAYS_EMPLOYED` em anos, tratamento do
+valor sentinela `365243` de `DAYS_EMPLOYED` (18% da base, "sem vínculo empregatício") e
+cálculo das features financeiras.
 
 ### 5.2 Bureau Features
 
-O arquivo:
-
-```text
-DataPipeline/02_bureau_features.py
-```
-
-é responsável pela agregação das informações do histórico de crédito.
-
-São calculadas informações como:
-
-- quantidade total de créditos;
-- quantidade de créditos ativos;
-- valor total dos créditos;
-- valor total das dívidas;
-- relação entre dívida e crédito.
+`DataPipeline/02_bureau_features.py` agrega o histórico de crédito por cliente: quantidade
+de créditos, créditos ativos, valor total dos créditos, valor total das dívidas e relação
+dívida/crédito.
 
 ### 5.3 Construção da ABT
 
-O arquivo:
-
-```text
-DataPipeline/merge_abt.py
-```
-
-realiza a integração das informações cadastrais e das informações do Bureau.
-
-O resultado é armazenado em:
-
-```text
-Dados/abt.csv
-```
-
-A ABT representa a base analítica utilizada no treinamento do modelo.
+`DataPipeline/merge_abt.py` junta as duas bases pelo `SK_ID_CURR`. Clientes sem histórico
+no bureau recebem zero nas variáveis de bureau. O resultado é `Dados/abt.csv`.
 
 ---
 
 ## 6. Engenharia de Atributos
 
-Foram criadas variáveis derivadas para representar as relações entre renda, crédito, parcela, bem e endividamento.
+Toda a lógica de features fica em um único módulo, **`credix/features.py`**, usado tanto
+pelos scripts do pipeline quanto pela API. O teste `tests/test_features.py` monta, para
+cada cliente de uma base sintética, a requisição que chegaria à API e verifica que as
+features calculadas são idênticas às da ABT de treino.
 
 | Feature | Descrição |
 |---|---|
-| `CREDITO_RENDA` | Relação entre o valor do crédito e a renda |
-| `PARCELA_RENDA` | Relação entre o valor da parcela e a renda |
-| `BEM_RENDA` | Relação entre o valor do bem e a renda |
-| `RENDA_LIVRE` | Estimativa da renda restante após o pagamento da parcela |
-| `COMPROMETIMENTO_RENDA` | Percentual da renda comprometido pela parcela |
-| `PARCELA_MAIOR_RENDA` | Indicador de parcela superior à renda |
-| `CREDITO_ALTO` | Indicador de crédito elevado em relação à renda |
-| `PRAZO_ESTIMADO` | Estimativa da quantidade de parcelas |
+| `IDADE` | Idade em anos |
+| `TEMPO_EMPRESA` | Tempo no emprego atual, em anos (0 se sem vínculo) |
+| `CREDITO_RENDA` | Valor do crédito / renda |
+| `PARCELA_RENDA` | Valor da parcela / renda |
+| `BEM_RENDA` | Valor do bem / renda |
+| `RENDA_LIVRE` | Renda menos parcela |
+| `COMPROMETIMENTO_RENDA` | Parcela / renda (sem arredondamento; usada pela regra de negócio) |
+| `PARCELA_MAIOR_RENDA` | Indicador de parcela maior que a renda |
+| `CREDITO_ALTO` | Indicador de crédito maior que 5 vezes a renda |
+| `PRAZO_ESTIMADO` | Valor do crédito / parcela |
 | `BUREAU_QTD_CREDITOS` | Quantidade de créditos registrados |
 | `BUREAU_QTD_ATIVOS` | Quantidade de créditos ativos |
 | `BUREAU_TOTAL_CREDITO` | Valor total dos créditos registrados |
 | `BUREAU_TOTAL_DIVIDA` | Valor total das dívidas |
-| `BUREAU_DEBT_RATIO` | Relação entre dívida e crédito |
+| `BUREAU_DEBT_RATIO` | Dívida total / crédito total |
 
-As colunas utilizadas no treinamento são:
+Além delas, o modelo usa as colunas originais `AMT_INCOME_TOTAL`, `AMT_CREDIT`,
+`AMT_ANNUITY`, `AMT_GOODS_PRICE`, `NAME_EDUCATION_TYPE` e `NAME_FAMILY_STATUS`
+(21 colunas no total, listadas em `COLUNAS_MODELO`).
 
-```text
-AMT_INCOME_TOTAL
-AMT_CREDIT
-AMT_ANNUITY
-AMT_GOODS_PRICE
-NAME_EDUCATION_TYPE
-NAME_FAMILY_STATUS
-IDADE
-TEMPO_EMPRESA
-CREDITO_RENDA
-PARCELA_RENDA
-BEM_RENDA
-RENDA_LIVRE
-COMPROMETIMENTO_RENDA
-PARCELA_MAIOR_RENDA
-CREDITO_ALTO
-PRAZO_ESTIMADO
-BUREAU_QTD_CREDITOS
-BUREAU_QTD_ATIVOS
-BUREAU_TOTAL_CREDITO
-BUREAU_TOTAL_DIVIDA
-BUREAU_DEBT_RATIO
-```
+### Unidades: renda e parcela na mesma periodicidade
+
+`AMT_INCOME_TOTAL` é a renda **anual** do cliente e `AMT_ANNUITY` é tratada na mesma
+periodicidade (valor **anual** da parcela). As razões `PARCELA_RENDA` e
+`COMPROMETIMENTO_RENDA` e a regra "parcela ≥ renda" só fazem sentido com as duas na mesma
+unidade. Por isso a API recebe `renda_anual` e `valor_parcela_anual`, que entram no modelo
+sem conversão. Quem tem a parcela mensal deve multiplicá-la por 12.
 
 ---
 
 ## 7. Treinamento do Modelo
 
-O problema foi tratado como uma tarefa de **classificação binária**.
+O problema é uma **classificação binária desbalanceada**. Foram comparados Regressão
+Logística, Árvore de Decisão, Random Forest e XGBoost no mesmo split e com o mesmo
+pré-processamento (`Model/evaluation.ipynb`, [seção 9](#9-alternativas-avaliadas)).
+O **XGBoost** teve o melhor equilíbrio entre ROC AUC, recall e precision, com pouca
+diferença entre treino e teste.
 
-Durante a etapa de experimentação, foram avaliados diferentes algoritmos de classificação, incluindo:
-- Regressão Logística;
-- Random Forest;
-- XGBoost.
-- 
-Os modelos foram comparados utilizando métricas adequadas ao contexto de risco de crédito, considerando principalmente:
+Hiperparâmetros (`credix/modelo.py`):
 
-- Recall;
-- Precision;
-- F1-score;
-- ROC AUC;
-- capacidade de identificação da classe inadimplente.
-
-A acurácia não foi utilizada isoladamente como critério de seleção, pois o conjunto de dados apresenta desbalanceamento entre clientes inadimplentes e não inadimplentes. 
-Nesse cenário, um modelo poderia obter uma acurácia elevada ao classificar a maioria dos clientes como não inadimplentes, mas apresentar baixa capacidade de identificar os clientes que realmente representam risco.
-
-Após a comparação dos resultados, o `XGBClassifier` foi selecionado como o modelo final do projeto.
-
-O XGBoost apresentou o melhor equilíbrio entre a capacidade de discriminação dos clientes e a identificação da classe inadimplente, considerando as métricas avaliadas. 
-O modelo também apresentou maior adequação ao problema por possuir características importantes, como:
-
-- capacidade de identificar relações não lineares entre as variáveis;
-- combinação sequencial de múltiplas árvores de decisão;
-- correção dos erros cometidos pelas árvores anteriores;
-- bom desempenho em dados tabulares;
-- capacidade de representar interações complexas entre variáveis financeiras e cadastrais;
-- suporte a técnicas para tratamento do desbalanceamento das classes;
-- disponibilização de probabilidades de inadimplência por meio do método `predict_proba()`.
-
-Para reduzir o impacto do desbalanceamento da variável alvo, foi utilizado o parâmetro:  scale_pos_weight=12
-
-O pipeline de treinamento executa as seguintes etapas:
-
-1. leitura da ABT;
-2. separação das variáveis explicativas e da variável alvo;
-3. identificação das variáveis categóricas;
-4. aplicação de One-Hot Encoding;
-5. divisão dos dados em treino e teste;
-6. treinamento do modelo XGBoost;
-7. geração das probabilidades;
-8. geração das classes previstas;
-9. cálculo das métricas;
-10. persistência do pipeline treinado;
-11. persistência das métricas.
-
-O pré-processamento e o modelo são armazenados em um único objeto `Pipeline` do Scikit-learn.
-
-Dessa forma, as mesmas transformações utilizadas durante o treinamento são aplicadas automaticamente durante as previsões realizadas pela API.
-
-O modelo treinado é armazenado em:
-
-```text
-models/best_model.pkl
+```python
+XGBClassifier(
+    n_estimators=500, max_depth=4, learning_rate=0.03,
+    subsample=0.8, colsample_bytree=0.8,
+    scale_pos_weight=12, eval_metric="logloss", random_state=42,
+)
 ```
 
-As métricas são armazenadas em:
+**De onde vem o `scale_pos_weight=12`:** é a razão entre exemplos negativos e positivos,
+arredondada. Na base, 91,93% dos clientes são adimplentes e 8,07% inadimplentes:
+91,93 / 8,07 ≈ 11,4. Esse peso faz cada inadimplente "valer" cerca de 12 adimplentes no
+treino, o que aumenta o recall da classe minoritária. O efeito colateral é deslocar o
+`predict_proba` para cima ([seção 2](#score-não-probabilidade)). O `train.py` registra a
+razão real do treino em `metrics/train_metrics.json` (`razao_classes_treino`).
 
-```text
-metrics/train_metrics.json
-```
+Etapas do `Model/train.py`:
+
+1. leitura da ABT e separação em treino/teste (80/20, estratificado, `random_state=42`);
+2. One-Hot Encoding das categóricas e treino do XGBoost num único `Pipeline` do
+   Scikit-learn, para que a API aplique exatamente as mesmas transformações;
+3. cálculo das métricas no teste e das faixas de risco;
+4. persistência de `models/best_model.pkl`, `models/faixas_risco.json`,
+   `metrics/train_metrics.json` e `metrics/importancia_features.csv`.
 
 ---
 
 ## 8. Métricas do Modelo
 
-Resultados obtidos na execução atual:
+Conjunto de teste (61.503 clientes), limiar padrão de 0,5 sobre o score:
 
 | Métrica | Resultado |
 |---|---:|
@@ -311,50 +276,187 @@ Resultados obtidos na execução atual:
 | Precision | 0,1416 |
 | Recall | 0,6622 |
 | F1-score | 0,2333 |
-| ROC AUC | 0,7117 |
+| ROC AUC (teste) | 0,7117 |
+| ROC AUC (treino) | 0,7331 |
 
-O conjunto de dados apresenta desbalanceamento entre clientes inadimplentes e não inadimplentes.
+O ROC AUC de treino vem do `Model/evaluation.ipynb`. A diferença de 0,02 para o teste
+indica que não há overfitting relevante.
 
-Por esse motivo, a avaliação do modelo não considera apenas a acurácia.
+A acurácia sozinha engana numa base desbalanceada: um modelo que diz "adimplente" para todo
+mundo teria 92% de acurácia e não identificaria nenhum inadimplente. Por isso a escolha
+priorizou **recall** (inadimplentes efetivamente identificados) e **ROC AUC** (capacidade de
+ordenar clientes por risco). A precision de 0,14 é o custo dessa escolha: no limiar 0,5,
+muitos bons pagadores são sinalizados. As faixas de risco
+([seção 2](#faixas-de-risco-definidas-no-conjunto-de-teste)) permitem calibrar esse
+equilíbrio conforme a política de crédito.
 
-O **recall** possui relevância para o problema porque representa a capacidade do modelo de identificar os clientes que realmente se tornam inadimplentes.
+### Importância das features
 
-Um falso negativo ocorre quando:
+O `Model/train.py` grava a importância de cada feature no XGBoost em
+`metrics/importancia_features.csv`, e o `Model/evaluation.ipynb` (seção 11) gera o gráfico
+em `docs/img/importancia_features.png`.
 
-```text
-Previsão do modelo:
-Cliente não inadimplente
-
-Resultado observado:
-Cliente inadimplente
-```
-
-Esse tipo de erro pode representar risco financeiro, pois um cliente com possibilidade de inadimplência pode não ser identificado pelo modelo.
-
-A métrica ROC AUC é utilizada para avaliar a capacidade do modelo de diferenciar clientes com maior e menor risco de inadimplência.
+<!-- Descomente após executar o evaluation.ipynb com a base do Kaggle:
+<img src="docs/img/importancia_features.png" alt="Importância das features no XGBoost" width="700" />
+-->
 
 ---
 
-## 9. Manutenção e Evolução do Modelo
+## 9. Alternativas avaliadas
 
-A manutenção do modelo Credix será realizada por meio do acompanhamento contínuo das previsões e da comparação posterior com o comportamento real dos clientes.
+### Algoritmos
 
-No momento de cada predição, serão armazenadas as informações necessárias para permitir a rastreabilidade do resultado, incluindo:
+Mesma ABT, mesmo split e mesmo pré-processamento (`Model/evaluation.ipynb`):
 
-- identificador da solicitação ou do cliente;
-- data da previsão;
-- probabilidade estimada de inadimplência;
-- nível de risco atribuído;
-- classe prevista;
-- versão do modelo utilizada;
-- principais variáveis utilizadas na previsão;
-- indicação de eventual ação preventiva aplicada ao cliente.
+| Modelo | Accuracy | Precision | Recall | F1 | AUC teste | AUC treino |
+|---|---:|---:|---:|---:|---:|---:|
+| Regressão Logística | 0,513 | 0,099 | 0,624 | 0,172 | 0,595 | 0,590 |
+| Árvore de Decisão | 0,661 | 0,129 | 0,558 | 0,210 | 0,652 | 0,691 |
+| Random Forest | 0,919 | 0,267 | 0,002 | 0,003 | 0,669 | 1,000 |
+| **XGBoost** | 0,649 | 0,142 | 0,662 | 0,233 | **0,711** | 0,733 |
 
-Após um período de maturação de **seis meses**, as previsões serão comparadas com o comportamento efetivamente observado.
+O Random Forest ilustra a armadilha da base desbalanceada: a maior acurácia, mas recall
+quase zero e AUC de treino 1,0 (decorou o treino).
 
-O período de acompanhamento e o fornecimento dos resultados reais deverão estar previstos contratualmente, garantindo a disponibilidade dos dados necessários para avaliação, manutenção e evolução contínua do modelo.
+### Mais tabelas da Home Credit
 
-O fluxo de monitoramento será realizado da seguinte forma:
+Uma versão alternativa do pipeline, avaliada pela equipe e não incluída neste repositório,
+usava 5 tabelas da Home Credit (além de `application_train` e `bureau`, também
+`previous_application`, `credit_card_balance`, `POS_CASH_balance` e
+`installments_payments`) com 416 features agregadas automaticamente:
+
+| | Pipeline deste repositório | Pipeline com 5 tabelas |
+|---|---|---|
+| Features | 21 | 416 |
+| Tamanho da ABT | 57 MB | 555 MB |
+| Tempo de treino | ~7 s (hiperparâmetros fixos) | ~4 min 25 s (GridSearchCV) |
+| ROC AUC teste (XGBoost) | 0,712 | 0,759 |
+
+O ganho de cerca de 0,05 de AUC vem de mais sinal disponível, com custo computacional bem
+maior. A equipe optou pelo pipeline mais simples e rápido de reproduzir. Incorporar as
+tabelas adicionais é um dos próximos passos.
+
+---
+
+## 10. API de Predição
+
+API REST em **FastAPI**, com validação de entrada em **Pydantic**, servida por **Uvicorn**.
+
+| Endpoint | Descrição |
+|---|---|
+| `POST /predict` | Score e nível de risco de uma solicitação |
+| `GET /health` | Indica se o modelo foi carregado (200) ou não (503) e mostra as faixas em uso |
+| `GET /docs` | Documentação Swagger interativa |
+
+Exemplo de requisição:
+
+```json
+{
+  "idade": 42,
+  "escolaridade": "Higher education",
+  "estado_civil": "Married",
+  "renda_anual": 250000,
+  "tempo_empresa": 12,
+  "valor_credito": 180000,
+  "valor_bem": 220000,
+  "valor_parcela_anual": 42000,
+  "qtd_creditos": 4,
+  "qtd_creditos_ativos": 2,
+  "valor_total_credito": 600000,
+  "valor_total_divida": 50000
+}
+```
+
+Resposta quando o modelo é consultado: `score_risco` com o score, `nivel_risco` de acordo
+com as faixas de `models/faixas_risco.json` e `regra_aplicada` nulo.
+
+Resposta quando uma regra de negócio decide (por exemplo, `"valor_parcela_anual": 300000`
+com `"renda_anual": 250000`):
+
+```json
+{
+  "score_risco": null,
+  "nivel_risco": "alto",
+  "regra_aplicada": "parcela_maior_ou_igual_renda"
+}
+```
+
+Entradas inválidas (valores negativos, idade fora de 18–100, categoria desconhecida,
+mais créditos ativos que créditos totais) retornam **422** com a descrição do erro.
+
+---
+
+## 11. Orquestração com Apache Airflow
+
+A DAG `credix_pipeline` (`dags/credix_pipeline.py`) tem uma tarefa por etapa:
+
+```text
+application_features ──┐
+                       ├──> construir_abt ──> treinar_modelo
+bureau_features ───────┘
+```
+
+As features cadastrais e de bureau não dependem uma da outra e rodam em paralelo. Uma
+falha aparece na etapa exata em que ocorreu e pode ser reexecutada isoladamente na
+interface (http://localhost:8080).
+
+Para rodar o mesmo fluxo sem Airflow: `python pipeline_orchestration.py`.
+
+---
+
+## 12. Infraestrutura com Docker Compose
+
+| Serviço | Responsabilidade |
+|---|---|
+| `credix-api` | API FastAPI (com healthcheck em `/health`) |
+| `airflow-apiserver` | Interface e API do Airflow |
+| `airflow-scheduler` | Agendamento das DAGs |
+| `airflow-worker` | Execução das tarefas |
+| `airflow-dag-processor` | Processamento das DAGs |
+| `airflow-triggerer` | Execução de tarefas assíncronas |
+| `postgres` | Banco de metadados do Airflow |
+| `redis` | Broker do Celery Executor |
+
+Antes de subir, copie `.env.example` para `.env` e preencha as variáveis.
+
+---
+
+## 13. Testes e Integração Contínua
+
+A pasta `tests/` tem testes pytest que **não precisam dos dados do Kaggle**: eles geram
+dados sintéticos no formato de `application_train.csv` e `bureau.csv`
+(`tests/dados_sinteticos.py`). Esses dados servem só para testar o código; não medem o
+desempenho do modelo.
+
+| Arquivo | O que verifica |
+|---|---|
+| `test_features.py` | A API calcula as mesmas features que a ABT de treino; casos de borda (sentinela de emprego, parcela ausente, crédito zero no bureau) |
+| `test_regras.py` | Regras de negócio, limites das faixas e cálculo dos cortes por quantil |
+| `test_modelo.py` | O treino gera métricas, faixas ordenadas e importâncias |
+| `test_api.py` | `/health`, `/predict`, regras de negócio na API e validação da entrada (via `TestClient`) |
+
+O workflow `.github/workflows/testes.yml` roda os testes a cada push e pull request.
+
+---
+
+## 14. Manutenção e Monitoramento (proposta)
+
+> **Não implementado.** Esta seção descreve como o modelo seria acompanhado em produção.
+
+A cada predição seriam armazenados:
+
+| Campo | Descrição |
+|---|---|
+| `id_solicitacao` | Identificador da solicitação |
+| `data_previsao` | Data e hora da previsão |
+| `score_risco` | Score calculado pelo modelo |
+| `nivel_risco` | Faixa de risco atribuída |
+| `regra_aplicada` | Regra de negócio aplicada, se houver |
+| `versao_modelo` | Versão do modelo utilizada |
+
+Após um período de maturação de **seis meses**, as previsões seriam comparadas com o
+comportamento real dos clientes. O fornecimento desses resultados deve estar previsto em
+contrato com os clientes da Credix.
 
 ```text
 Predição realizada
@@ -363,261 +465,84 @@ Predição realizada
 Armazenamento da previsão
         │
         ▼
-Acompanhamento do cliente
-        │
-        ▼
-Período de maturação de 6 meses
+Período de maturação (6 meses)
         │
         ▼
 Recebimento do resultado observado
         │
         ▼
-Comparação entre previsão e realidade
-        │
-        ▼
-Recálculo das métricas
+Recálculo das métricas e da inadimplência por faixa
         │
         ▼
 Avaliação da necessidade de retreinamento
 ```
----
 
-## 10. API de Predição
-
-O modelo é disponibilizado por meio de uma API REST desenvolvida com FastAPI.
-A ideia é que nossos clientes consultem modelo atraves da API.
-
-A API utiliza:
-
-- FastAPI para criação dos endpoints;
-- Pydantic para validação dos dados;
-- Uvicorn como servidor;
-- Joblib para carregamento do modelo treinado.
-
-A documentação Swagger pode ser acessada em:
-
-```text
-http://localhost:8000/docs
-```
-
-Endpoint de predição:
-
-```http
-POST /predict
-```
-
-Exemplo de requisição:
-
-```json
-{
-  "idade": 42,
-  "sexo": "F",
-  "possui_carro": true,
-  "possui_imovel": true,
-  "escolaridade": "Higher education",
-  "estado_civil": "Married",
-  "renda_anual": 250000,
-  "tempo_empresa": 12,
-  "valor_credito": 180000,
-  "valor_bem": 220000,
-  "valor_parcela": 3500,
-  "qtd_creditos": 4,
-  "qtd_creditos_ativos": 2,
-  "valor_total_credito": 600000,
-  "valor_total_divida": 50000
-}
-```
-
-Exemplo de resposta:
-
-```json
-{
-  "probabilidade_inadimplencia": 0.0821,
-  "nivel_risco": "baixo"
-}
-```
+Além da performance, seria monitorado o **Data Drift** das variáveis de entrada, por exemplo
+com o PSI (Population Stability Index) comparando a distribuição recente com a do treino.
 
 ---
 
-## 11. Orquestração com Apache Airflow
+## 15. Estratégia de Retreinamento (proposta)
 
-O Apache Airflow é utilizado para executar e monitorar o pipeline.
+> **Não implementado.**
 
-A interface pode ser acessada em:
+O retreinamento seria iniciado quando ocorrer uma ou mais condições:
 
-```text
-http://localhost:8080
-```
-
-A DAG executa o seguinte fluxo:
-
-```text
-Início
-   │
-   ▼
-Application Features
-   │
-   ▼
-Bureau Features
-   │
-   ▼
-Construção da ABT
-   │
-   ▼
-Treinamento do XGBoost
-   │
-   ▼
-Cálculo das métricas
-   │
-   ▼
-Persistência do modelo
-   │
-   ▼
-Fim
-```
-
-O arquivo:
-
-```text
-pipeline_orchestration.py
-```
-
-executa sequencialmente:
-
-```python
-DataPipeline/01_application_features.py
-
-DataPipeline/02_bureau_features.py
-
-DataPipeline/merge_abt.py
-
-Model/train.py
-```
-
-## 12. Infraestrutura com Docker Compose
-
-A infraestrutura é gerenciada pelo Docker Compose.
-
-Os principais serviços são:
-
-| Serviço | Responsabilidade |
-|---|---|
-| `credix-api` | Disponibilização do modelo por FastAPI |
-| `airflow-apiserver` | Interface e API do Airflow |
-| `airflow-scheduler` | Agendamento das DAGs |
-| `airflow-worker` | Execução das tarefas |
-| `airflow-dag-processor` | Processamento das DAGs |
-| `airflow-triggerer` | Execução de tarefas assíncronas |
-| `postgres` | Banco de metadados do Airflow |
-| `redis` | Broker utilizado pelo Celery Executor |
-
----
-
-
-### 15.1 Registro das Previsões
-
-Cada previsão deverá armazenar:
-
-| Campo | Descrição |
-|---|---|
-| `id_solicitacao` | Identificador da solicitação |
-| `data_previsao` | Data e hora da previsão |
-| `probabilidade_inadimplencia` | Probabilidade calculada pelo modelo |
-| `classe_prevista` | Classe binária prevista |
-| `nivel_risco` | Classificação de risco |
-| `versao_modelo` | Versão utilizada |
-
-Exemplo:
-
-```json
-{
-  "id_solicitacao": 1001,
-  "data_previsao": "2026-07-10T10:30:00",
-  "probabilidade_inadimplencia": 0.7409,
-  "classe_prevista": 1,
-  "nivel_risco": "alto",
-  "versao_modelo": "1.0"
-}
-```
----
-
-## 18. Estratégia de Retreinamento
-
-O retreinamento poderá ser iniciado quando ocorrer uma ou mais condições:
-
-- redução relevante do ROC AUC;
-- redução do recall;
-- redução do F1-score;
+- queda relevante do ROC AUC, do recall ou do F1-score;
 - aumento da taxa de falsos negativos;
-- PSI superior a 0,25 em múltiplas variáveis críticas;
-- alteração relevante na distribuição das previsões;
+- PSI acima de 0,25 em várias variáveis críticas;
+- mudança relevante na distribuição dos scores;
 - disponibilidade de novos dados rotulados.
-
-Fluxo proposto:
 
 ```text
 Monitoramento
        │
        ▼
-Degradação detectada?
+Degradação detectada? ── Não ──> Manter modelo atual
        │
-       ├── Não
-       │     │
-       │     ▼
-       │ Manter modelo atual
+      Sim
        │
-       └── Sim
-             │
-             ▼
+       ▼
 Treinar modelo candidato
-             │
-             ▼
-Comparar modelo candidato
-com o modelo atual
-             │
-             ▼
-Novo modelo atende
-aos critérios?
        │
-       ├── Não
-       │     │
-       │     ▼
-       │ Manter modelo atual
+       ▼
+Comparar com o modelo atual
        │
-       └── Sim
-             │
-             ▼
+       ▼
+Candidato atende aos critérios? ── Não ──> Manter modelo atual
+       │
+      Sim
+       │
+       ▼
 Promover nova versão
 ```
 
-O novo modelo somente deverá substituir o modelo atual caso atenda aos limites mínimos definidos e apresente desempenho adequado nos dados de validação.
+O novo modelo só substitui o atual se atingir os limites mínimos definidos nos dados de
+validação.
 
 ---
 
-## 20. Plano de Ações Automatizadas — ML, Automação e Agentes de IA
+## 16. Plano de Ações Automatizadas (proposta)
 
-Este item **não é implementado nem demonstrado** neste projeto — é uma proposta de como as
-previsões do modelo Credix poderiam acionar ações automatizadas em produção, conectando
-**Machine Learning**, **automação** e **agentes de Inteligência Artificial** em um contexto
-real de negócio (a Credix vendendo essa inteligência via API B2B para fintechs, varejistas
-e cooperativas de crédito).
+> **Não implementado.** Proposta de como os scores do Credix poderiam acionar ações
+> automatizadas em produção, combinando Machine Learning, automação e agentes de IA, no
+> contexto da Credix vendendo essa inteligência via API B2B para fintechs, varejistas e
+> cooperativas de crédito.
 
-### 20.1 Princípio geral: nem toda ação automatizada precisa de um agente de IA
-
-A proposta separa as ações em duas camadas conforme a natureza da decisão:
+### 16.1 Princípio geral: nem toda ação automatizada precisa de um agente de IA
 
 | Camada | Quando se aplica | Exemplo |
 | --- | --- | --- |
 | **Automação determinística** (regra, sem IA) | Decisão clara, sem ambiguidade | Faixa de risco baixo/alto já define a ação |
 | **Agente de IA** | Decisão exige julgamento, linguagem natural ou simulação | Negociar condições, explicar uma recusa, investigar uma anomalia |
 
-Essa separação evita o uso desnecessário de agentes onde uma regra simples já resolve —
-e concentra o uso de IA exatamente onde ela agrega valor real.
+Essa separação evita usar agentes onde uma regra simples resolve e concentra a IA onde ela
+agrega valor.
 
-### 20.2 Camada 1 — Roteamento automático por faixa de risco (regra, sem IA)
+### 16.2 Camada 1: roteamento automático por faixa de risco (regra, sem IA)
 
 ```text
-Previsão do modelo (prob. de inadimplência)
+Score do modelo
               │
    ┌──────────┼──────────┐
    ▼          ▼          ▼
@@ -628,55 +553,48 @@ risco      risco       risco
 Aprovação   Agente de   Recusa ou
 automática    IA        escalonamento
 (<1s, sem   (seção      para análise
- humano)     20.3)       humana
+ humano)     16.3)       humana
 ```
 
-Reforça o valor central do produto Credix: decisão em tempo real, sem intervenção humana
-nos casos claros. Só a faixa de risco médio (ambígua) segue para um agente.
+Só a faixa de risco médio (ambígua) segue para um agente.
 
-### 20.3 Camada 2 — Agente "copiloto de crédito" para risco médio
+### 16.3 Camada 2: agente "copiloto de crédito" para risco médio
 
-Para solicitações na faixa ambígua, um agente de IA recebe a probabilidade prevista +
-os dados financeiros do solicitante e **simula contrapropostas automaticamente**, em vez
-de um analista ter que testar isso manualmente:
+Para solicitações na faixa ambígua, um agente de IA recebe o score e os dados financeiros do
+solicitante e **simula contrapropostas**, em vez de um analista testar isso manualmente:
 
-- reduzir o valor do crédito ou aumentar a entrada até a probabilidade cair dentro da
-  política aceitável;
-- recomendar prazo/parcela compatível com a capacidade financeira do cliente;
-- sugerir taxa de juros que compense o risco residual;
-- decidir quando não há alternativa viável e encaminhar para análise humana.
+- reduzir o valor do crédito ou aumentar a entrada até o score cair dentro da política;
+- recomendar prazo e parcela compatíveis com a capacidade financeira do cliente;
+- sugerir uma taxa de juros que compense o risco residual;
+- encaminhar para análise humana quando não houver alternativa viável.
 
-Entre as informações que o agente consome estão a probabilidade e nível de risco, renda,
-valor solicitado, comprometimento de renda, e o histórico de crédito (créditos ativos,
-dívida total) — as mesmas variáveis já usadas pelo modelo.
+O agente consome as mesmas variáveis do modelo: score, faixa de risco, renda, valor
+solicitado, comprometimento de renda e histórico de crédito.
 
-### 20.4 Camada 3 — Agente de explicação para o cliente final
+### 16.4 Camada 3: agente de explicação para o cliente final
 
-Reaproveita diretamente o SHAP (interpretabilidade do modelo, já mapeado como diferencial
-da Credix): quando um crédito é negado, o agente traduz as variáveis que mais pesaram na
-decisão em uma explicação em linguagem simples para o solicitante — por exemplo, "seu
-pedido foi impactado principalmente pelo comprometimento de renda atual; reduzir esse
-valor ou regularizar dívidas em aberto pode melhorar sua próxima avaliação" — em vez de
-só devolver um número de probabilidade. Isso não é um recurso novo: é o mesmo SHAP do
-modelo, automatizado como texto.
+Com uma técnica de explicabilidade por cliente, como **SHAP** (ainda não implementada; hoje o
+projeto calcula apenas a importância global das features), o agente traduziria as variáveis
+que mais pesaram numa recusa em linguagem simples. Por exemplo: "seu pedido foi impactado
+principalmente pelo comprometimento de renda atual; reduzir esse valor ou regularizar dívidas
+em aberto pode melhorar sua próxima avaliação".
 
-### 20.5 Camada 4 — Agente de monitoramento e auditoria contínua
+### 16.5 Camada 4: agente de monitoramento e auditoria contínua
 
-Conecta-se à estratégia de retreinamento (seção 18): quando o monitoramento de drift
-detecta degradação (ex.: PSI acima do limite), em vez de só disparar um alerta numérico,
-um agente investiga automaticamente a amostra de casos recentes com maior erro, resume um
-relatório em linguagem natural para o time de ML (ex.: "o modelo está errando mais em
-clientes autônomos nos últimos 30 dias") e recomenda se é caso de retreino ou apenas
-ruído estatístico. A decisão de promover um novo modelo continua sendo humana — o agente
-prepara a investigação, não decide sozinho.
+Conectado à estratégia de retreinamento ([seção 15](#15-estratégia-de-retreinamento-proposta)):
+quando o monitoramento detecta degradação (por exemplo, PSI acima do limite), um agente
+investiga os casos recentes com maior erro, resume um relatório em linguagem natural para o
+time de ML (por exemplo, "o modelo está errando mais em clientes autônomos nos últimos 30
+dias") e recomenda se é caso de retreino ou ruído estatístico. A decisão de promover um novo
+modelo continua humana.
 
-### 20.6 Fluxo simplificado, ponta a ponta
+### 16.6 Fluxo ponta a ponta
 
 ```text
 Solicitação de crédito
           │
           ▼
-Modelo Credix (probabilidade + SHAP)
+Modelo Credix (score + explicação)
           │
           ▼
    Motor de decisão automatizada
@@ -685,8 +603,8 @@ Modelo Credix (probabilidade + SHAP)
    ▼      ▼              ▼
 Aprova  Agente          Recusa +
 auto.   copiloto        Agente de
-(20.2)  (20.3)          explicação
-                         (20.4)
+(16.2)  (16.3)          explicação
+                         (16.4)
           │
           ▼
 Validação humana quando necessário
@@ -695,63 +613,37 @@ Validação humana quando necessário
 Resultado real observado (6 meses)
           │
           ▼
-Agente de monitoramento (20.5)
+Agente de monitoramento (16.5)
           │
           ▼
-Retreino (decisão humana, seção 18)
+Retreino (decisão humana, seção 15)
 ```
 
-### 20.7 Por que essa arquitetura
-
-O ponto central da proposta: **automação determinística resolve os casos claros** (faixas
-de risco bem definidas); **o agente de IA entra exatamente onde há ambiguidade, linguagem
-natural ou simulação envolvida** (negociar condições, explicar uma recusa, investigar uma
-anomalia). Isso mostra uma aplicação madura de IA agente — não "IA em tudo", mas IA onde
-ela resolve um problema que regra simples não resolve.
+**Por que essa arquitetura:** automação determinística resolve os casos claros; o agente de
+IA entra onde há ambiguidade, linguagem natural ou simulação. É IA onde ela resolve um
+problema que uma regra simples não resolve, e não "IA em tudo".
 
 ---
 
-## 21. Próximos Passos
+## 17. Próximos Passos
 
-As principais evoluções planejadas são:
-
-- armazenar as previsões em banco de dados;
-- incluir identificador da solicitação na API;
-- criar endpoint de saúde da API;
-- implementar versionamento do modelo;
-- implementar monitoramento automatizado do modelo;
-- implementar monitoramento da performance real;
-- criar alertas de degradação;
-- implementar comparação entre modelo atual e modelo candidato;
-- implementar testes automatizados;
-- criar dashboards de monitoramento;
-- implementar CI/CD para testes e deploy;
-- implementar autenticação na API;
-- disponibilizar a solução em um ambiente de nuvem.
-- implementar agente de ia
+- incorporar as tabelas adicionais da Home Credit ([seção 9](#mais-tabelas-da-home-credit));
+- calibrar o score (por exemplo, `CalibratedClassifierCV`) para expor também uma probabilidade;
+- explicabilidade por cliente com SHAP;
+- armazenar as previsões em banco de dados, com identificador da solicitação;
+- versionar o modelo e comparar automaticamente modelo atual × candidato;
+- monitorar performance real e Data Drift, com alertas de degradação e dashboards;
+- autenticação na API;
+- deploy em nuvem (CD);
+- agentes de IA da [seção 16](#16-plano-de-ações-automatizadas-proposta).
 
 ---
 
-## 22. Considerações Finais
+## 18. Considerações Finais
 
-O Credix demonstra uma arquitetura funcional de Machine Learning que integra:
-
-- engenharia de dados;
-- construção da base analítica;
-- treinamento de modelo;
-- avaliação de métricas;
-- orquestração;
-- disponibilização do modelo;
-- infraestrutura conteinerizada;
-- monitoramento;
-- automação.
-
-A utilização do Apache Airflow permite controlar a execução do pipeline e acompanhar falhas.
-
-A FastAPI disponibiliza o modelo como um serviço REST de predição.
-
-O Docker Compose permite executar os componentes da solução de forma integrada e reproduzível.
-
-A estratégia de monitoramento permite acompanhar alterações nos dados, mudanças nas previsões e possível degradação da performance do modelo após a obtenção dos resultados reais.
-
-O projeto apresenta uma base para a evolução de uma solução de Machine Learning em produção, incluindo versionamento, monitoramento, retreinamento e integração com agentes de Inteligência Artificial.
+O Credix integra engenharia de dados, construção da base analítica, treino e avaliação de
+modelo, orquestração, disponibilização via API, infraestrutura conteinerizada e testes
+automatizados. O Airflow controla a execução do pipeline por etapa, a FastAPI expõe o modelo
+com regras de negócio e validação de entrada, e o Docker Compose torna o ambiente
+reproduzível. As propostas de monitoramento, retreino e agentes de IA indicam o caminho para
+levar a solução a produção.
