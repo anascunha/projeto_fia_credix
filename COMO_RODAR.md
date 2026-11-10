@@ -111,15 +111,24 @@ docker compose up -d --build credix-api
 
 - Documentação interativa: http://localhost:8000/docs
 - Saúde: `curl http://localhost:8000/health`
-- Predição:
+- Predição (a resposta traz o `id_solicitacao` da previsão registrada):
 
 ```bash
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{"idade": 42, "escolaridade": "Higher education", "estado_civil": "Married",
-       "renda_anual": 250000, "tempo_empresa": 12, "valor_credito": 180000,
-       "valor_bem": 220000, "valor_parcela_anual": 42000, "qtd_creditos": 4,
+       "renda_mensal": 250000, "tempo_empresa": 12, "valor_credito": 180000,
+       "valor_bem": 220000, "valor_parcela_mensal": 42000, "qtd_creditos": 4,
        "qtd_creditos_ativos": 2, "valor_total_credito": 600000, "valor_total_divida": 50000}'
+```
+
+Cada previsão fica gravada em `registros/predicoes.db` (SQLite). Para consultar:
+
+```bash
+curl "http://localhost:8000/predicoes?limite=10"                  # mais recentes
+curl http://localhost:8000/predicoes/<id_solicitacao>             # uma previsão
+curl -X POST http://localhost:8000/predicoes/<id_solicitacao>/resultado \
+  -H "Content-Type: application/json" -d '{"inadimplente": false}'  # resultado real
 ```
 
 ## 5. Orquestração com Airflow

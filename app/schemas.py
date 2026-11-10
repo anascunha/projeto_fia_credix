@@ -25,18 +25,23 @@ class PredictRequest(BaseModel):
     """Dados de uma solicitação de crédito.
 
     Valores monetários na mesma moeda da base de treino. Renda e parcela devem
-    estar na MESMA periodicidade (anual), como no treino do modelo.
+    estar na MESMA periodicidade (mensal), como no treino do modelo.
     """
 
+    id_cliente: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Identificador do cliente no sistema de quem chama (opcional, só para o registro)",
+    )
     idade: float = Field(ge=18, le=100, description="Idade em anos")
     escolaridade: Escolaridade
     estado_civil: EstadoCivil
-    renda_anual: float = Field(ge=0, description="Renda total anual (AMT_INCOME_TOTAL)")
+    renda_mensal: float = Field(ge=0, description="Renda mensal (AMT_INCOME_TOTAL)")
     tempo_empresa: float = Field(ge=0, description="Tempo no emprego atual, em anos")
     valor_credito: float = Field(ge=0, description="Valor do crédito solicitado (AMT_CREDIT)")
     valor_bem: float = Field(ge=0, description="Valor do bem financiado (AMT_GOODS_PRICE)")
-    valor_parcela_anual: float = Field(
-        ge=0, description="Valor anual da parcela do empréstimo (AMT_ANNUITY)"
+    valor_parcela_mensal: float = Field(
+        ge=0, description="Valor mensal da parcela do empréstimo (AMT_ANNUITY)"
     )
     qtd_creditos: int = Field(ge=0, description="Créditos registrados no bureau")
     qtd_creditos_ativos: int = Field(ge=0, description="Créditos ativos no bureau")
@@ -55,11 +60,11 @@ class PredictRequest(BaseModel):
                 "idade": 42,
                 "escolaridade": "Higher education",
                 "estado_civil": "Married",
-                "renda_anual": 250000,
+                "renda_mensal": 250000,
                 "tempo_empresa": 12,
                 "valor_credito": 180000,
                 "valor_bem": 220000,
-                "valor_parcela_anual": 42000,
+                "valor_parcela_mensal": 42000,
                 "qtd_creditos": 4,
                 "qtd_creditos_ativos": 2,
                 "valor_total_credito": 600000,
@@ -70,6 +75,9 @@ class PredictRequest(BaseModel):
 
 
 class PredictResponse(BaseModel):
+    id_solicitacao: str | None = Field(
+        description="Identificador da previsão no registro (nulo se o registro estiver indisponível)"
+    )
     score_risco: float | None = Field(
         description=(
             "Score de risco do modelo (0 a 1). Ordena clientes por risco; NÃO é uma "
@@ -85,4 +93,28 @@ class PredictResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: Literal["ok", "indisponivel"]
     modelo_carregado: bool
+    versao_modelo: str | None = None
+    registro_ativo: bool = False
     faixas: dict[str, float] | None = None
+
+
+class Predicao(BaseModel):
+    """Uma previsão registrada, com a entrada, as features e o resultado."""
+
+    id_solicitacao: str
+    id_cliente: str | None
+    data_previsao: str
+    versao_modelo: str | None
+    entrada: dict
+    features: dict
+    score_risco: float | None
+    nivel_risco: Literal["baixo", "medio", "alto"]
+    regra_aplicada: str | None
+    resultado_observado: bool | None = Field(
+        description="True = inadimplente, False = adimplente, nulo = ainda em maturação"
+    )
+    data_resultado: str | None
+
+
+class ResultadoObservado(BaseModel):
+    inadimplente: bool = Field(description="O cliente ficou inadimplente no período de maturação?")

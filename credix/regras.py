@@ -32,14 +32,14 @@ class ResultadoRegra:
     regra: str
 
 
-def aplicar_regras(renda_anual: float, comprometimento_renda: float) -> ResultadoRegra | None:
+def aplicar_regras(renda_mensal: float, comprometimento_renda: float) -> ResultadoRegra | None:
     """Regras que decidem o risco sem consultar o modelo.
 
     ``comprometimento_renda`` é ``parcela / renda`` na mesma periodicidade
     (a feature ``COMPROMETIMENTO_RENDA``). Retorna ``None`` quando nenhuma
     regra se aplica e o modelo deve ser consultado.
     """
-    if renda_anual <= 0:
+    if renda_mensal <= 0:
         return ResultadoRegra("alto", "renda_nao_positiva")
     if comprometimento_renda >= 1:
         return ResultadoRegra("alto", "parcela_maior_ou_igual_renda")
