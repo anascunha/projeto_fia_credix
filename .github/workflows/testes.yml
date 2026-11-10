@@ -1,0 +1,31 @@
+name: Testes
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements-pipeline.txt
+            app/requirements.txt
+
+      - name: Instalar dependências
+        run: pip install -r app/requirements.txt pytest==9.2.0 httpx==0.28.1
+
+      - name: Rodar testes
+        run: pytest -v
+
+      - name: Validar a DAG (sintaxe)
+        run: python -m py_compile dags/credix_pipeline.py
