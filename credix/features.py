@@ -76,10 +76,7 @@ COLUNAS_MODELO = [
 ]
 
 _RAZOES = ["CREDITO_RENDA", "PARCELA_RENDA", "BEM_RENDA"]
-# TEMPO_EMPRESA não é arredondada: no script original ela ficava com dtype
-# object (replace com pd.NA) e o .round(2) a ignorava. Mantemos o mesmo
-# comportamento para não alterar o modelo já treinado e avaliado.
-_COLUNAS_ARREDONDADAS = ["IDADE", *_RAZOES, "PRAZO_ESTIMADO"]
+_COLUNAS_ARREDONDADAS = ["IDADE", "TEMPO_EMPRESA", *_RAZOES, "PRAZO_ESTIMADO"]
 
 
 def adicionar_features_financeiras(df: pd.DataFrame) -> pd.DataFrame:

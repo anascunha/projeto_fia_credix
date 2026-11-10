@@ -1,7 +1,9 @@
 # Bibliotecas do pipeline de dados e do treino (usadas também pela imagem do Airflow).
 # As mesmas versões são usadas pela API: o modelo salvo com joblib precisa ser
 # carregado com as mesmas versões de scikit-learn e xgboost que o treinaram.
-pandas==3.0.5
+# pandas fica na série 2.x: é a versão da imagem apache/airflow:3.2.2, e o
+# provider Google do Airflow (db-dtypes) exige pandas<3.
+pandas==2.3.3
 numpy==2.5.3
 scikit-learn==1.9.1
 xgboost==3.4.1

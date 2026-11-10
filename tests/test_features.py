@@ -50,7 +50,7 @@ def test_colunas_da_abt_sao_as_do_modelo(abt):
 def test_valores_calculados_a_mao():
     f = features_solicitacao(
         idade=30.123,
-        tempo_empresa=2.5,
+        tempo_empresa=637 / 365,  # cliente 100002 da base real: 1,7452 anos
         escolaridade="Higher education",
         estado_civil="Married",
         renda_anual=100_000,
@@ -63,6 +63,8 @@ def test_valores_calculados_a_mao():
         valor_total_divida=50_000,
     ).iloc[0]
     assert f["IDADE"] == 30.12
+    # a ABT de treino (saída salva em Model/evaluation.ipynb) mostra 1.75 para esse cliente
+    assert f["TEMPO_EMPRESA"] == 1.75
     assert f["CREDITO_RENDA"] == 6.0
     assert f["PARCELA_RENDA"] == 0.3
     assert f["BEM_RENDA"] == 5.0
