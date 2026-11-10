@@ -1,42 +1,30 @@
+"""Exemplo: score de um cliente da ABT usando o modelo treinado."""
+import json
+
 import joblib
 import pandas as pd
 
-# Carrega o modelo treinado
-modelo = joblib.load("models/best_model.pkl")
+from config import ABT, ID, MODEL_FOLDER, TARGET
 
-# Carrega um cliente para teste
-df = pd.read_csv("Dados/abt.csv")
-
-# Seleciona um cliente
-cliente = df.iloc[[0]]
-
-# Remove colunas que não entram no modelo
-cliente = cliente.drop(
-    columns=[
-        "TARGET",
-        "SK_ID_CURR"
-    ]
-)
-
-# Calcula a probabilidade de inadimplência
-probabilidade = float(modelo.predict_proba(cliente)[0][1])
+from credix.features import COLUNAS_MODELO
+from credix.regras import FAIXAS_PADRAO, classificar_score
 
 
-#Esses limites são apenas uma primeira versão. 
-# No futuro cada cliente da Credix configure seus próprios intervalos 
-# sem precisar alterar o modelo de Machine Learning
-# Define a faixa de risco
-if probabilidade < 0.20:
-    risco = "baixo"
-elif probabilidade < 0.50:
-    risco = "medio"
-else:
-    risco = "alto"
+def main():
+    modelo = joblib.load(MODEL_FOLDER / "best_model.pkl")
+    caminho_faixas = MODEL_FOLDER / "faixas_risco.json"
+    faixas = json.loads(caminho_faixas.read_text()) if caminho_faixas.exists() else FAIXAS_PADRAO
 
-# Resposta da API
-resposta = {
-    "probabilidade_inadimplencia": round(probabilidade, 4),
-    "nivel_risco": risco
-}
+    cliente = pd.read_csv(ABT).iloc[[0]]
+    score = float(modelo.predict_proba(cliente[COLUNAS_MODELO])[0][1])
 
-print(resposta)
+    print({
+        ID: int(cliente[ID].iloc[0]),
+        TARGET: int(cliente[TARGET].iloc[0]),
+        "score_risco": round(score, 4),
+        "nivel_risco": classificar_score(score, faixas),
+    })
+
+
+if __name__ == "__main__":
+    main()

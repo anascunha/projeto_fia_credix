@@ -1,28 +1,20 @@
+"""Executa o pipeline completo localmente, sem Airflow (mesmas etapas da DAG)."""
 import subprocess
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
-print("=== Iniciando Pipeline Credix ===")
+ETAPAS = [
+    BASE_DIR / "DataPipeline" / "01_application_features.py",
+    BASE_DIR / "DataPipeline" / "02_bureau_features.py",
+    BASE_DIR / "DataPipeline" / "merge_abt.py",
+    BASE_DIR / "Model" / "train.py",
+]
 
-subprocess.run(
-    ["python", str(BASE_DIR / "DataPipeline" / "01_application_features.py")],
-    check=True,
-)
-
-subprocess.run(
-    ["python", str(BASE_DIR / "DataPipeline" / "02_bureau_features.py")],
-    check=True,
-)
-
-subprocess.run(
-    ["python", str(BASE_DIR / "DataPipeline" / "merge_abt.py")],
-    check=True,
-)
-
-subprocess.run(
-    ["python", str(BASE_DIR / "Model" / "train.py")],
-    check=True,
-)
-
-print("=== Pipeline finalizado ===")
+if __name__ == "__main__":
+    print("=== Iniciando Pipeline Credix ===")
+    for etapa in ETAPAS:
+        print(f"--> {etapa.relative_to(BASE_DIR)}")
+        subprocess.run([sys.executable, str(etapa)], check=True)
+    print("=== Pipeline finalizado ===")

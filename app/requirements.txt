@@ -1,8 +1,5 @@
-fastapi
-uvicorn
-pandas
-scikit-learn
-xgboost
-joblib
-numpy
-pydantic
+# Dependências da API (imagem Docker credix-api).
+-r ../requirements-pipeline.txt
+fastapi==0.162.3
+uvicorn==0.54.0
+pydantic==2.13.5

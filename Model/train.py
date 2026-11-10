@@ -1,157 +1,59 @@
-import os
+"""Treino do modelo final (XGBoost) a partir da ABT.
+
+Gera:
+- models/best_model.pkl          pipeline (pré-processamento + XGBoost)
+- models/faixas_risco.json       cortes de score das faixas baixo/médio/alto
+- metrics/train_metrics.json     métricas no conjunto de teste
+- metrics/importancia_features.csv
+"""
 import json
+import logging
+
 import joblib
 import pandas as pd
 
-from sklearn.compose import ColumnTransformer
-from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    roc_auc_score
-)
+from config import ABT, METRICS_FOLDER, MODEL_FOLDER, RANDOM_STATE, TEST_SIZE
 
-from xgboost import XGBClassifier
+from credix.modelo import treinar_e_avaliar
 
-from config import *
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+log = logging.getLogger("credix.train")
 
-# df = pd.read_csv("Dados/abt.csv")
 
-from pathlib import Path
+def main():
+    abt = pd.read_csv(ABT)
+    resultado = treinar_e_avaliar(abt, test_size=TEST_SIZE, random_state=RANDOM_STATE)
+    metricas = resultado["metricas"]
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-df = pd.read_csv(BASE_DIR / "Dados" / "abt.csv")
-
-#separa x e y 
-X = df.drop(columns=[TARGET, ID])
-y = df[TARGET]
-
-#categorias
-categoricas = X.select_dtypes(include=["object"]).columns.tolist()
-
-#pre processamento 
-preprocessador = ColumnTransformer(
-    transformers=[
-        (
-            "cat",
-            OneHotEncoder(handle_unknown="ignore"),
-            categoricas
+    log.info("===== XGBoost (teste) =====")
+    for chave in ["accuracy", "precision", "recall", "f1", "roc_auc", "roc_auc_treino"]:
+        log.info("%s: %.4f", chave, metricas[chave])
+    log.info(
+        "razão negativos/positivos no treino: %.2f (scale_pos_weight=%s)",
+        metricas["razao_classes_treino"],
+        metricas["scale_pos_weight"],
+    )
+    log.info("faixas de score: %s", resultado["faixas"])
+    for faixa in metricas["faixas"]:
+        log.info(
+            "  %-5s %5.1f%% dos clientes | inadimplência observada %.1f%%",
+            faixa["nivel_risco"],
+            100 * faixa["participacao"],
+            100 * faixa["taxa_inadimplencia"],
         )
-    ],
-    remainder="passthrough"
-)
 
-#treino/teste
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=TEST_SIZE,
-    random_state=RANDOM_STATE,
-    stratify=y
-)
+    MODEL_FOLDER.mkdir(exist_ok=True)
+    METRICS_FOLDER.mkdir(exist_ok=True)
 
-pipeline = Pipeline(
-    steps=[
-        (
-            "preprocessamento",
-            preprocessador
-        ),
-        (
-            "modelo",
-            XGBClassifier(
-                n_estimators=500,
-                max_depth=4,
-                learning_rate=0.03,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                scale_pos_weight=12,   # exemplo
-                random_state=RANDOM_STATE,
-                eval_metric="logloss"
-            )
-        )
-    ]
-)
+    joblib.dump(resultado["pipeline"], MODEL_FOLDER / "best_model.pkl")
+    with open(MODEL_FOLDER / "faixas_risco.json", "w", encoding="utf-8") as f:
+        json.dump(resultado["faixas"], f, indent=4)
+    with open(METRICS_FOLDER / "train_metrics.json", "w", encoding="utf-8") as f:
+        json.dump(metricas, f, indent=4, ensure_ascii=False)
+    resultado["importancia"].to_csv(METRICS_FOLDER / "importancia_features.csv", index=False)
 
-pipeline.fit(
-    X_train,
-    y_train
-)
-
-print("\nCOLUNAS UTILIZADAS NO TREINAMENTO:\n")
-print(X_train.columns.tolist())
-
-#probabilidade
-pred = pipeline.predict(X_test)
-prob = pipeline.predict_proba(X_test)[:,1]
-
-#metricas
-metricas = {
-    "accuracy": accuracy_score(y_test,pred),
-    "precision": precision_score(y_test,pred),
-    "recall": recall_score(y_test,pred),
-    "f1": f1_score(y_test,pred),
-    "roc_auc": roc_auc_score(y_test,prob)
-}
-
-print("\n===== XGBoost =====")
-for chave, valor in metricas.items():
-    print(f"{chave}: {valor:.4f}")
+    log.info("modelo salvo em %s", MODEL_FOLDER / "best_model.pkl")
 
 
-models_dir = BASE_DIR / "models"
-metrics_dir = BASE_DIR / "metrics"
-
-models_dir.mkdir(exist_ok=True)
-metrics_dir.mkdir(exist_ok=True)
-
-joblib.dump(
-    pipeline,
-    models_dir / "best_model.pkl"
-)
-
-with open(
-    metrics_dir / "train_metrics.json",
-    "w",
-    encoding="utf-8"
-) as f:
-    json.dump(metricas, f, indent=4)
-
-# joblib.dump(
-#     pipeline,
-#     "models/best_model.pkl"
-# )
-
-# with open(
-#     "metrics/train_metrics.json",
-#     "w",
-#     encoding="utf-8"
-# ) as f:
-#     json.dump(
-#         metricas,
-#         f,
-#         indent=4
-#     )
-
-# import pandas as pd
-
-# feature_names = (
-#     pipeline.named_steps["preprocessamento"]
-#     .get_feature_names_out()
-# )
-
-# importancias = pd.DataFrame({
-#     "feature": feature_names,
-#     "importance": pipeline.named_steps["modelo"].feature_importances_
-# })
-
-# importancias = importancias.sort_values(
-#     "importance",
-#     ascending=False
-# )
-
-# print(importancias.head(20))
+if __name__ == "__main__":
+    main()

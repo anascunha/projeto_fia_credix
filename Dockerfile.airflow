@@ -8,7 +8,9 @@ RUN apt-get update && \
 
 USER airflow
 
-COPY app/requirements.txt /requirements.txt
+# Só as bibliotecas do pipeline/treino: FastAPI e Pydantic ficam com as versões
+# que o próprio Airflow já traz, para não conflitar com ele.
+COPY requirements-pipeline.txt /requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip
 
