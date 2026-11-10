@@ -1,141 +1,51 @@
-import joblib
-import pandas as pd
+"""Carregamento do modelo e lógica de predição da API."""
+import json
+import logging
+import os
 from pathlib import Path
 
+import joblib
+
+from app.schemas import PredictRequest
+from credix.features import features_solicitacao
+from credix.regras import FAIXAS_PADRAO, aplicar_regras, classificar_score
+
+log = logging.getLogger("credix.api")
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-modelo = joblib.load(
-    BASE_DIR / "models" / "best_model.pkl"
-)
-
-print("Modelo carregado com sucesso!")
+MODEL_PATH = Path(os.getenv("CREDIX_MODEL_PATH", BASE_DIR / "models" / "best_model.pkl"))
+FAIXAS_PATH = Path(os.getenv("CREDIX_FAIXAS_PATH", MODEL_PATH.parent / "faixas_risco.json"))
 
 
-def validar_regras(request):
+class Preditor:
+    def __init__(self, modelo, faixas: dict[str, float]):
+        self.modelo = modelo
+        self.faixas = faixas
 
-    if request.renda_anual <= 0:
+    def prever(self, request: PredictRequest) -> dict:
+        entrada = features_solicitacao(**request.model_dump())
+
+        regra = aplicar_regras(
+            renda_anual=request.renda_anual,
+            comprometimento_renda=float(entrada["COMPROMETIMENTO_RENDA"].iloc[0]),
+        )
+        if regra is not None:
+            return {"score_risco": None, "nivel_risco": regra.nivel_risco, "regra_aplicada": regra.regra}
+
+        score = float(self.modelo.predict_proba(entrada)[0][1])
         return {
-            "probabilidade_inadimplencia": 1.0,
-            "nivel_risco": "alto"
+            "score_risco": round(score, 4),
+            "nivel_risco": classificar_score(score, self.faixas),
+            "regra_aplicada": None,
         }
 
-    comprometimento = (
-        request.valor_parcela /
-        request.renda_anual
-    )
 
-    # Parcela maior que a renda
-    if comprometimento >= 1:
-        return {
-            "probabilidade_inadimplencia": 1.0,
-            "nivel_risco": "alto"
-        }
-
-    return None
-
-
-def prever(request):
-
-    resposta = validar_regras(request)
-
-    if resposta is not None:
-        return resposta
-
-    credito_renda = (
-        request.valor_credito /
-        request.renda_anual
-    )
-
-    parcela_renda = (
-        request.valor_parcela /
-        request.renda_anual
-    )
-
-    bem_renda = (
-        request.valor_bem /
-        request.renda_anual
-    )
-
-    renda_livre = (
-        request.renda_anual -
-        request.valor_parcela
-    )
-
-    comprometimento_renda = parcela_renda
-
-    parcela_maior_renda = int(
-        request.valor_parcela >
-        request.renda_anual
-    )
-
-    credito_alto = int(
-        credito_renda > 5
-    )
-
-    prazo_estimado = (
-        request.valor_credito /
-        request.valor_parcela
-        if request.valor_parcela > 0
-        else 0
-    )
-
-    debt_ratio = (
-        request.valor_total_divida /
-        request.valor_total_credito
-        if request.valor_total_credito > 0
-        else 0
-    )
-
-    entrada = pd.DataFrame([{
-
-        "AMT_INCOME_TOTAL": request.renda_anual,
-        "AMT_CREDIT": request.valor_credito,
-        "AMT_ANNUITY": request.valor_parcela,
-        "AMT_GOODS_PRICE": request.valor_bem,
-
-        "NAME_EDUCATION_TYPE": request.escolaridade,
-        "NAME_FAMILY_STATUS": request.estado_civil,
-
-        "IDADE": request.idade,
-        "TEMPO_EMPRESA": request.tempo_empresa,
-
-        "CREDITO_RENDA": credito_renda,
-        "PARCELA_RENDA": parcela_renda,
-        "BEM_RENDA": bem_renda,
-
-        "RENDA_LIVRE": renda_livre,
-        "COMPROMETIMENTO_RENDA": comprometimento_renda,
-        "PARCELA_MAIOR_RENDA": parcela_maior_renda,
-        "CREDITO_ALTO": credito_alto,
-
-        "PRAZO_ESTIMADO": prazo_estimado,
-
-        "BUREAU_QTD_CREDITOS": request.qtd_creditos,
-        "BUREAU_QTD_ATIVOS": request.qtd_creditos_ativos,
-        "BUREAU_TOTAL_CREDITO": request.valor_total_credito,
-        "BUREAU_TOTAL_DIVIDA": request.valor_total_divida,
-        "BUREAU_DEBT_RATIO": debt_ratio
-
-    }])
-
-    probabilidade = float(
-        modelo.predict_proba(entrada)[0][1]
-    )
-
-    if probabilidade < 0.20:
-        risco = "baixo"
-    elif probabilidade < 0.50:
-        risco = "medio"
+def carregar_preditor(model_path: Path = MODEL_PATH, faixas_path: Path = FAIXAS_PATH) -> Preditor:
+    modelo = joblib.load(model_path)
+    if faixas_path.exists():
+        faixas = json.loads(faixas_path.read_text(encoding="utf-8"))
     else:
-        risco = "alto"
-
-    return {
-
-        "probabilidade_inadimplencia": round(
-            probabilidade,
-            4
-        ),
-
-        "nivel_risco": risco
-
-    }
+        log.warning("%s não encontrado; usando faixas padrão %s", faixas_path, FAIXAS_PADRAO)
+        faixas = FAIXAS_PADRAO
+    log.info("Modelo carregado de %s (faixas: %s)", model_path, faixas)
+    return Preditor(modelo, faixas)
