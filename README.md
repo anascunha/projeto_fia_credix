@@ -292,10 +292,11 @@ Conjunto de teste (61.503 clientes), limiar padrão de 0,5 sobre o score:
 | Recall | 0,6622 |
 | F1-score | 0,2333 |
 | ROC AUC (teste) | 0,7117 |
-| ROC AUC (treino) | 0,7331 |
+| ROC AUC (treino) | 0,7344 |
 
 O ROC AUC de treino vem do `Model/evaluation.ipynb`. A diferença de 0,02 para o teste
-indica que não há overfitting relevante.
+indica que não há overfitting relevante. As métricas de teste foram reproduzidas exatamente
+após a refatoração do pipeline (execução do `evaluation.ipynb` com a base completa).
 
 A acurácia sozinha engana numa base desbalanceada: um modelo que diz "adimplente" para todo
 mundo teria 92% de acurácia e não identificaria nenhum inadimplente. Por isso a escolha
@@ -307,13 +308,18 @@ equilíbrio conforme a política de crédito.
 
 ### Importância das features
 
-O `Model/train.py` grava a importância de cada feature no XGBoost em
-`metrics/importancia_features.csv`, e o `Model/evaluation.ipynb` (seção 11) gera o gráfico
-em `docs/img/importancia_features.png`.
+Importância por ganho no XGBoost (`Model/evaluation.ipynb`, seção 11; também gravada pelo
+`Model/train.py` em `metrics/importancia_features.csv`):
 
-<!-- Descomente após executar o evaluation.ipynb com a base do Kaggle:
 <img src="docs/img/importancia_features.png" alt="Importância das features no XGBoost" width="700" />
--->
+
+- **Escolaridade** é o fator mais forte: as categorias "Higher education" e "Secondary /
+  secondary special" somam cerca de 31% do ganho. Na EDA, a inadimplência vai de 5,4% (ensino
+  superior) a 10,9% (fundamental).
+- O **histórico de bureau** (`BUREAU_DEBT_RATIO`, créditos ativos, crédito total) aparece logo
+  em seguida, junto com **idade**, **prazo estimado** e **tempo de empresa**.
+- É uma visão **global** do modelo; explicar cada decisão individualmente (SHAP) é um próximo
+  passo.
 
 ---
 
@@ -325,13 +331,13 @@ Mesma ABT, mesmo split e mesmo pré-processamento (`Model/evaluation.ipynb`):
 
 | Modelo | Accuracy | Precision | Recall | F1 | AUC teste | AUC treino |
 |---|---:|---:|---:|---:|---:|---:|
-| Regressão Logística | 0,513 | 0,099 | 0,624 | 0,172 | 0,595 | 0,590 |
+| Regressão Logística | 0,594 | 0,116 | 0,606 | 0,194 | 0,634 | 0,634 |
 | Árvore de Decisão | 0,661 | 0,129 | 0,558 | 0,210 | 0,652 | 0,691 |
-| Random Forest | 0,919 | 0,267 | 0,002 | 0,003 | 0,669 | 1,000 |
-| **XGBoost** | 0,649 | 0,142 | 0,662 | 0,233 | **0,711** | 0,733 |
+| Random Forest | 0,914 | 0,278 | 0,038 | 0,066 | 0,673 | 1,000 |
+| **XGBoost** | 0,649 | 0,142 | 0,662 | 0,233 | **0,712** | 0,734 |
 
-O Random Forest ilustra a armadilha da base desbalanceada: a maior acurácia, mas recall
-quase zero e AUC de treino 1,0 (decorou o treino).
+O Random Forest ilustra a armadilha da base desbalanceada: a maior acurácia, mas recall de
+apenas 0,04 e AUC de treino 1,0 (decorou o treino).
 
 ### Mais tabelas da Home Credit
 
