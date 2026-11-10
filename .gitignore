@@ -29,7 +29,8 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Ambiente virtual
+# Ambiente virtual e versão local do Python (pyenv)
+.python-version
 .venv/
 venv/
 env/

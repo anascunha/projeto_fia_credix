@@ -23,7 +23,8 @@ infraestrutura em **Docker Compose**.
 |---:|---:|---:|---:|
 | 0,71 | 0,66 | 0,14 | 0,23 |
 
-O modelo identifica 2 em cada 3 inadimplentes no limiar padrão. Os números estão na
+O modelo identifica 2 em cada 3 inadimplentes no limiar padrão. Na faixa de risco alto
+(20% dos clientes), a inadimplência é de 18,4%, contra 3,8% na faixa baixa. Os números estão na
 [seção 8](#8-métricas-do-modelo).
 
 **Como rodar** (depois de aceitar as regras da competição no Kaggle e autenticar com
@@ -100,8 +101,9 @@ A API recebe dados cadastrais e financeiros e retorna:
 
 O XGBoost é treinado com `scale_pos_weight=12` para compensar o desbalanceamento das classes
 (ver [seção 7](#7-treinamento-do-modelo)). Esse peso aumenta artificialmente a saída do
-`predict_proba`. No teste, cerca de 38% dos clientes recebem score ≥ 0,5, enquanto só 8% são
-inadimplentes (valor derivado de recall 0,6622 × 8,07% / precision 0,1416). Por isso o valor
+`predict_proba`. No teste, o score médio é **0,45**, enquanto só **8,07%** dos clientes são
+inadimplentes, e cerca de 38% dos clientes recebem score ≥ 0,5 (recall 0,6622 × 8,07% /
+precision 0,1416). Por isso o valor
 **não é tratado como probabilidade** de inadimplência, e sim como um score que ordena os
 clientes.
 
@@ -110,15 +112,17 @@ clientes.
 Os cortes das faixas são calculados pelo `Model/train.py` a partir da distribuição do score
 no conjunto de teste e salvos em `models/faixas_risco.json`:
 
-| Faixa | Clientes de teste na faixa |
-|---|---|
-| Baixo | 50% com menor score |
-| Médio | 30% seguintes |
-| Alto | 20% com maior score |
+| Faixa | Clientes de teste na faixa | Inadimplência observada | Parcela dos inadimplentes |
+|---|---|---:|---:|
+| Baixo | 50% com menor score (30.751) | 3,8% | 23,5% |
+| Médio | 30% seguintes (18.451) | 8,3% | 31,0% |
+| Alto | 20% com maior score (12.301) | **18,4%** | **45,5%** |
 
-Para cada faixa, o treino registra em `metrics/train_metrics.json` a **taxa de inadimplência
-observada** no teste. Essa taxa é a leitura correta de "chance de inadimplência" de um
-cliente da faixa. As proporções ficam em `credix/regras.py` (`QUANTIS_FAIXAS`) e podem ser
+A inadimplência cresce de forma consistente entre as faixas: a faixa alta tem **4,8 vezes** a
+inadimplência da baixa e, com apenas 20% dos clientes, concentra quase metade dos
+inadimplentes do teste. A taxa observada em cada faixa, registrada pelo treino em
+`metrics/train_metrics.json`, é a leitura correta de "chance de inadimplência" de um cliente
+da faixa. As proporções ficam em `credix/regras.py` (`QUANTIS_FAIXAS`) e podem ser
 ajustadas à política de crédito de cada cliente da Credix sem retreinar o modelo.
 
 ### Regras de negócio
@@ -265,10 +269,10 @@ XGBClassifier(
 
 **De onde vem o `scale_pos_weight=12`:** é a razão entre exemplos negativos e positivos,
 arredondada. Na base, 91,93% dos clientes são adimplentes e 8,07% inadimplentes:
-91,93 / 8,07 ≈ 11,4. Esse peso faz cada inadimplente "valer" cerca de 12 adimplentes no
-treino, o que aumenta o recall da classe minoritária. O efeito colateral é deslocar o
-`predict_proba` para cima ([seção 2](#score-não-probabilidade)). O `train.py` registra a
-razão real do treino em `metrics/train_metrics.json` (`razao_classes_treino`).
+91,93 / 8,07 ≈ 11,4 (o `train.py` registra 11,39 em `metrics/train_metrics.json`,
+campo `razao_classes_treino`). Esse peso faz cada inadimplente "valer" cerca de 12
+adimplentes no treino, o que aumenta o recall da classe minoritária. O efeito colateral é
+deslocar o `predict_proba` para cima ([seção 2](#score-não-probabilidade)).
 
 Etapas do `Model/train.py`:
 
