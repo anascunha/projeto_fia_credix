@@ -1,4 +1,5 @@
 """Carregamento do modelo e lógica de predição da API."""
+import hashlib
 import json
 import logging
 import os
@@ -18,26 +19,43 @@ FAIXAS_PATH = Path(os.getenv("CREDIX_FAIXAS_PATH", MODEL_PATH.parent / "faixas_r
 
 
 class Preditor:
-    def __init__(self, modelo, faixas: dict[str, float]):
+    def __init__(self, modelo, faixas: dict[str, float], versao: str | None = None):
         self.modelo = modelo
         self.faixas = faixas
+        self.versao = versao
+
+    def calcular_features(self, request: PredictRequest):
+        return features_solicitacao(**request.model_dump(exclude={"id_cliente"}))
 
     def prever(self, request: PredictRequest) -> dict:
-        entrada = features_solicitacao(**request.model_dump())
+        """Score, nível de risco e regra aplicada para uma solicitação."""
+        return self.prever_com_features(request)[0]
+
+    def prever_com_features(self, request: PredictRequest) -> tuple[dict, dict]:
+        """Como :meth:`prever`, devolvendo também as features enviadas ao modelo."""
+        entrada = self.calcular_features(request)
+        features = entrada.iloc[0].to_dict()
 
         regra = aplicar_regras(
-            renda_anual=request.renda_anual,
+            renda_mensal=request.renda_mensal,
             comprometimento_renda=float(entrada["COMPROMETIMENTO_RENDA"].iloc[0]),
         )
         if regra is not None:
-            return {"score_risco": None, "nivel_risco": regra.nivel_risco, "regra_aplicada": regra.regra}
+            resultado = {"score_risco": None, "nivel_risco": regra.nivel_risco, "regra_aplicada": regra.regra}
+            return resultado, features
 
         score = float(self.modelo.predict_proba(entrada)[0][1])
-        return {
+        resultado = {
             "score_risco": round(score, 4),
             "nivel_risco": classificar_score(score, self.faixas),
             "regra_aplicada": None,
         }
+        return resultado, features
+
+
+def versao_do_modelo(model_path: Path) -> str:
+    """Identifica o modelo pelo hash do arquivo: muda a cada retreino."""
+    return hashlib.sha256(Path(model_path).read_bytes()).hexdigest()[:12]
 
 
 def carregar_preditor(model_path: Path = MODEL_PATH, faixas_path: Path = FAIXAS_PATH) -> Preditor:
@@ -47,5 +65,6 @@ def carregar_preditor(model_path: Path = MODEL_PATH, faixas_path: Path = FAIXAS_
     else:
         log.warning("%s não encontrado; usando faixas padrão %s", faixas_path, FAIXAS_PADRAO)
         faixas = FAIXAS_PADRAO
-    log.info("Modelo carregado de %s (faixas: %s)", model_path, faixas)
-    return Preditor(modelo, faixas)
+    versao = versao_do_modelo(model_path)
+    log.info("Modelo %s carregado de %s (faixas: %s)", versao, model_path, faixas)
+    return Preditor(modelo, faixas, versao)

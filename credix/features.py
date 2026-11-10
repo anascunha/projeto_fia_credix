@@ -12,14 +12,20 @@ Unidades
 --------
 O modelo é treinado com as colunas originais da Home Credit:
 
-- ``AMT_INCOME_TOTAL``: renda total do cliente, tratada como **anual**;
-- ``AMT_ANNUITY``: valor da parcela do empréstimo, tratado na **mesma
-  periodicidade da renda** (anual).
+- ``AMT_INCOME_TOTAL``: renda do cliente, tratada como **mensal**;
+- ``AMT_ANNUITY``: valor da parcela do empréstimo, também **mensal**.
 
-As razões ``PARCELA_RENDA``/``COMPROMETIMENTO_RENDA`` e a regra de negócio só
-fazem sentido se parcela e renda estiverem na mesma unidade. Por isso a API
-recebe ``renda_anual`` e ``valor_parcela_anual`` (ver ``app/schemas.py``) e
-os repassa sem conversão para ``AMT_INCOME_TOTAL`` e ``AMT_ANNUITY``.
+O dicionário da Home Credit não informa a periodicidade. A unidade foi inferida
+da base completa (``DataPipeline/exp_analysis.ipynb``, seção 6.1):
+
+- parcela / renda tem mediana 0,163 e só 0,01% dos clientes passam de 1, então as
+  duas estão na mesma periodicidade (se a parcela fosse mensal e a renda anual,
+  88,7% dos clientes teriam parcela x 12 maior que a renda);
+- crédito / parcela vai de 8 a 45 (mediana 20): número de parcelas típico de
+  empréstimo pessoal em meses, não em anos.
+
+A API recebe ``renda_mensal`` e ``valor_parcela_mensal`` (ver ``app/schemas.py``)
+e os repassa sem conversão para ``AMT_INCOME_TOTAL`` e ``AMT_ANNUITY``.
 """
 
 from __future__ import annotations
@@ -36,9 +42,9 @@ LIMITE_CREDITO_ALTO = 5
 COLUNAS_APPLICATION = [
     "SK_ID_CURR",
     "TARGET",
-    "AMT_INCOME_TOTAL",  # renda anual do cliente
+    "AMT_INCOME_TOTAL",  # renda mensal do cliente
     "AMT_CREDIT",  # valor do crédito solicitado
-    "AMT_ANNUITY",  # valor da parcela (mesma periodicidade da renda)
+    "AMT_ANNUITY",  # valor da parcela mensal
     "AMT_GOODS_PRICE",  # valor do bem financiado
     "DAYS_BIRTH",
     "DAYS_EMPLOYED",
@@ -162,10 +168,10 @@ def features_solicitacao(
     tempo_empresa: float,
     escolaridade: str,
     estado_civil: str,
-    renda_anual: float,
+    renda_mensal: float,
     valor_credito: float,
     valor_bem: float,
-    valor_parcela_anual: float,
+    valor_parcela_mensal: float,
     qtd_creditos: float,
     qtd_creditos_ativos: float,
     valor_total_credito: float,
@@ -179,9 +185,9 @@ def features_solicitacao(
     df = pd.DataFrame(
         [
             {
-                "AMT_INCOME_TOTAL": float(renda_anual),
+                "AMT_INCOME_TOTAL": float(renda_mensal),
                 "AMT_CREDIT": float(valor_credito),
-                "AMT_ANNUITY": float(valor_parcela_anual),
+                "AMT_ANNUITY": float(valor_parcela_mensal),
                 "AMT_GOODS_PRICE": float(valor_bem),
                 "NAME_EDUCATION_TYPE": escolaridade,
                 "NAME_FAMILY_STATUS": estado_civil,
