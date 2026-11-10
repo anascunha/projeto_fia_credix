@@ -1,15 +1,16 @@
+"""Etapa 3: construção da ABT (application + bureau)."""
 import pandas as pd
 
-from utils import *
+from utils import ABT, APPLICATION_FEATURES, BUREAU_FEATURES
 
-application = pd.read_csv(APPLICATION_FEATURES)
-bureau = pd.read_csv(BUREAU_FEATURES)
+from credix.features import montar_abt
 
-abt = (
-    application
-    .merge(bureau, on="SK_ID_CURR", how="left")
-)
 
-abt.fillna(0, inplace=True)
+def main():
+    abt = montar_abt(pd.read_csv(APPLICATION_FEATURES), pd.read_csv(BUREAU_FEATURES))
+    abt.to_csv(ABT, index=False)
+    print(f"ABT {abt.shape} -> {ABT}")
 
-abt.to_csv(ABT, index=False)
+
+if __name__ == "__main__":
+    main()
