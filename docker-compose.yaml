@@ -65,6 +65,7 @@ services:
       - ./app:/app/app
       - ./credix:/app/credix
       - ./models:/app/models
+      - ./registros:/app/registros   # banco SQLite com o histórico de previsões
 
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

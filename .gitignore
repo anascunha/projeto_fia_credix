@@ -15,6 +15,9 @@ models/
 # Métricas geradas
 metrics/
 
+# Registro das previsões da API (SQLite)
+registros/
+
 # Logs
 logs/
 *.log

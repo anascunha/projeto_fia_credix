@@ -47,10 +47,11 @@ Docker e Airflow, em [COMO_RODAR.md](COMO_RODAR.md).
 | Treino e avaliação do XGBoost, comparação com 3 algoritmos | ✅ Implementado |
 | Importância das features | ✅ Implementado (`metrics/importancia_features.csv` e notebook) |
 | API FastAPI (`/predict`, `/health`) com regras de negócio | ✅ Implementado |
+| Registro das previsões (SQLite) e consulta do histórico pela API | ✅ Implementado ([seção 14.1](#141-registro-das-previsões-implementado)) |
 | DAG do Airflow (uma tarefa por etapa) | ✅ Implementado |
 | Docker Compose (API + Airflow) | ✅ Implementado |
 | Testes automatizados (pytest) e CI no GitHub Actions | ✅ Implementado |
-| Registro das previsões e monitoramento de performance | 📝 Proposta ([seção 14](#14-manutenção-e-monitoramento-proposta)) |
+| Monitoramento de performance com os resultados registrados | 📝 Proposta ([seção 14.2](#142-monitoramento-proposta)) |
 | Monitoramento de Data Drift e retreino automático | 📝 Proposta ([seção 15](#15-estratégia-de-retreinamento-proposta)) |
 | SHAP, ações automatizadas e agentes de IA | 📝 Proposta ([seção 16](#16-plano-de-ações-automatizadas-proposta)) |
 
@@ -90,6 +91,7 @@ A API recebe dados cadastrais e financeiros e retorna:
 
 | Campo | Descrição |
 |---|---|
+| `id_solicitacao` | Identificador da previsão no registro ([seção 14.1](#141-registro-das-previsões-implementado)) |
 | `score_risco` | Score do modelo, de 0 a 1. Quanto maior, maior o risco. |
 | `nivel_risco` | `baixo`, `medio` ou `alto` |
 | `regra_aplicada` | Regra de negócio que decidiu o risco sem consultar o modelo, se houver |
@@ -125,8 +127,8 @@ Antes de consultar o modelo, a API aplica regras para situações extremas:
 
 | Condição | Resultado |
 |---|---|
-| Renda anual igual a zero | risco `alto` (`renda_nao_positiva`) |
-| Parcela anual maior ou igual à renda anual (comprometimento ≥ 100%) | risco `alto` (`parcela_maior_ou_igual_renda`) |
+| Renda mensal igual a zero | risco `alto` (`renda_nao_positiva`) |
+| Parcela mensal maior ou igual à renda mensal (comprometimento ≥ 100%) | risco `alto` (`parcela_maior_ou_igual_renda`) |
 
 ---
 
@@ -224,13 +226,22 @@ Além delas, o modelo usa as colunas originais `AMT_INCOME_TOTAL`, `AMT_CREDIT`,
 `AMT_ANNUITY`, `AMT_GOODS_PRICE`, `NAME_EDUCATION_TYPE` e `NAME_FAMILY_STATUS`
 (21 colunas no total, listadas em `COLUNAS_MODELO`).
 
-### Unidades: renda e parcela na mesma periodicidade
+### Unidades: renda e parcela mensais
 
-`AMT_INCOME_TOTAL` é a renda **anual** do cliente e `AMT_ANNUITY` é tratada na mesma
-periodicidade (valor **anual** da parcela). As razões `PARCELA_RENDA` e
-`COMPROMETIMENTO_RENDA` e a regra "parcela ≥ renda" só fazem sentido com as duas na mesma
-unidade. Por isso a API recebe `renda_anual` e `valor_parcela_anual`, que entram no modelo
-sem conversão. Quem tem a parcela mensal deve multiplicá-la por 12.
+O dicionário da Home Credit não informa a periodicidade de `AMT_INCOME_TOTAL` (renda) e
+`AMT_ANNUITY` (parcela). Ela foi inferida da base completa
+(`DataPipeline/exp_analysis.ipynb`, seção 6.1):
+
+| Verificação | Resultado | Conclusão |
+|---|---|---|
+| Parcela / renda | mediana 0,163; 0,01% dos clientes com parcela ≥ renda | parcela e renda estão na **mesma** periodicidade |
+| Parcela × 12 ≥ renda | 88,7% dos clientes | a hipótese "parcela mensal, renda anual" é implausível |
+| Crédito / parcela (nº de parcelas) | de 8 a 45, mediana 20 | prazo típico de empréstimo pessoal **em meses** |
+
+Por isso as duas são tratadas como **mensais**: a API recebe `renda_mensal` e
+`valor_parcela_mensal`, que entram no modelo sem conversão. As razões `PARCELA_RENDA` e
+`COMPROMETIMENTO_RENDA` e a regra "parcela ≥ renda" dependem só de as duas estarem na mesma
+unidade, o que a primeira linha da tabela confirma.
 
 ---
 
@@ -348,22 +359,26 @@ API REST em **FastAPI**, com validação de entrada em **Pydantic**, servida por
 
 | Endpoint | Descrição |
 |---|---|
-| `POST /predict` | Score e nível de risco de uma solicitação |
-| `GET /health` | Indica se o modelo foi carregado (200) ou não (503) e mostra as faixas em uso |
+| `POST /predict` | Score e nível de risco de uma solicitação (a previsão é registrada) |
+| `GET /predicoes` | Histórico de previsões, com filtros `nivel_risco`, `id_cliente`, `sem_resultado` e `limite` |
+| `GET /predicoes/{id_solicitacao}` | Uma previsão registrada, com entrada, features e resultado |
+| `POST /predicoes/{id_solicitacao}/resultado` | Registra se o cliente ficou inadimplente (`{"inadimplente": true}`) |
+| `GET /health` | Indica se o modelo foi carregado (200) ou não (503), a versão do modelo, se o registro está ativo e as faixas em uso |
 | `GET /docs` | Documentação Swagger interativa |
 
-Exemplo de requisição:
+Exemplo de requisição (`id_cliente` é opcional e serve só para localizar a previsão depois):
 
 ```json
 {
+  "id_cliente": "cliente-123",
   "idade": 42,
   "escolaridade": "Higher education",
   "estado_civil": "Married",
-  "renda_anual": 250000,
+  "renda_mensal": 250000,
   "tempo_empresa": 12,
   "valor_credito": 180000,
   "valor_bem": 220000,
-  "valor_parcela_anual": 42000,
+  "valor_parcela_mensal": 42000,
   "qtd_creditos": 4,
   "qtd_creditos_ativos": 2,
   "valor_total_credito": 600000,
@@ -371,14 +386,16 @@ Exemplo de requisição:
 }
 ```
 
-Resposta quando o modelo é consultado: `score_risco` com o score, `nivel_risco` de acordo
-com as faixas de `models/faixas_risco.json` e `regra_aplicada` nulo.
+Resposta quando o modelo é consultado: `id_solicitacao` da previsão registrada, `score_risco`
+com o score, `nivel_risco` de acordo com as faixas de `models/faixas_risco.json` e
+`regra_aplicada` nulo.
 
-Resposta quando uma regra de negócio decide (por exemplo, `"valor_parcela_anual": 300000`
-com `"renda_anual": 250000`):
+Resposta quando uma regra de negócio decide (por exemplo, `"valor_parcela_mensal": 300000`
+com `"renda_mensal": 250000`):
 
 ```json
 {
+  "id_solicitacao": "29c0cac2-b04e-4d62-a283-b3f8de2c722c",
   "score_risco": null,
   "nivel_risco": "alto",
   "regra_aplicada": "parcela_maior_ou_igual_renda"
@@ -437,27 +454,45 @@ desempenho do modelo.
 | `test_features.py` | A API calcula as mesmas features que a ABT de treino; casos de borda (sentinela de emprego, parcela ausente, crédito zero no bureau) |
 | `test_regras.py` | Regras de negócio, limites das faixas e cálculo dos cortes por quantil |
 | `test_modelo.py` | O treino gera métricas, faixas ordenadas e importâncias |
-| `test_api.py` | `/health`, `/predict`, regras de negócio na API e validação da entrada (via `TestClient`) |
+| `test_api.py` | `/health`, `/predict`, regras de negócio na API, validação da entrada e registro/consulta das previsões (via `TestClient`, com banco temporário) |
 | `test_baixar_dados.py` | Download dos CSVs com um cliente falso da API do Kaggle (sem rede nem token) |
 
 O workflow `.github/workflows/testes.yml` roda os testes a cada push e pull request.
 
 ---
 
-## 14. Manutenção e Monitoramento (proposta)
+## 14. Registro das Previsões e Monitoramento
 
-> **Não implementado.** Esta seção descreve como o modelo seria acompanhado em produção.
+### 14.1 Registro das previsões (implementado)
 
-A cada predição seriam armazenados:
+Cada chamada a `POST /predict` é gravada num banco SQLite (`app/registro.py`), em
+`registros/predicoes.db` (configurável pela variável `CREDIX_DB_PATH`; no Docker Compose a
+pasta é um volume, então o histórico sobrevive à recriação do container). Se o registro
+falhar, a previsão é devolvida mesmo assim, com `id_solicitacao` nulo.
 
 | Campo | Descrição |
 |---|---|
-| `id_solicitacao` | Identificador da solicitação |
-| `data_previsao` | Data e hora da previsão |
-| `score_risco` | Score calculado pelo modelo |
-| `nivel_risco` | Faixa de risco atribuída |
-| `regra_aplicada` | Regra de negócio aplicada, se houver |
-| `versao_modelo` | Versão do modelo utilizada |
+| `id_solicitacao` | Identificador da previsão (UUID), devolvido pelo `/predict` |
+| `id_cliente` | Identificador opcional enviado por quem chamou a API |
+| `data_previsao` | Data e hora da previsão (UTC) |
+| `versao_modelo` | Hash do arquivo do modelo; muda a cada retreino |
+| `entrada` | Dados enviados na requisição |
+| `features` | As 21 features que o modelo recebeu |
+| `score_risco`, `nivel_risco`, `regra_aplicada` | Resultado devolvido |
+| `resultado_observado`, `data_resultado` | Comportamento real do cliente, registrado depois |
+
+O histórico é a base para a evolução do projeto:
+
+- **agentes de IA** ([seção 16](#16-plano-de-ações-automatizadas-proposta)) podem ler uma
+  previsão por `GET /predicoes/{id_solicitacao}`, com entrada e features, para explicar a
+  decisão ao cliente ou simular contrapropostas;
+- **monitoramento**: `POST /predicoes/{id_solicitacao}/resultado` grava se o cliente ficou
+  inadimplente, e `GET /predicoes?sem_resultado=true` lista as previsões ainda em maturação.
+
+### 14.2 Monitoramento (proposta)
+
+> **Não implementado.** O registro e os resultados observados já ficam disponíveis; o
+> cálculo periódico das métricas e os alertas, não.
 
 Após um período de maturação de **seis meses**, as previsões seriam comparadas com o
 comportamento real dos clientes. O fornecimento desses resultados deve estar previsto em
@@ -574,7 +609,9 @@ solicitante e **simula contrapropostas**, em vez de um analista testar isso manu
 - encaminhar para análise humana quando não houver alternativa viável.
 
 O agente consome as mesmas variáveis do modelo: score, faixa de risco, renda, valor
-solicitado, comprometimento de renda e histórico de crédito.
+solicitado, comprometimento de renda e histórico de crédito. Tudo isso já fica gravado no
+registro de previsões e pode ser lido por `GET /predicoes/{id_solicitacao}`
+([seção 14.1](#141-registro-das-previsões-implementado)).
 
 ### 16.4 Camada 3: agente de explicação para o cliente final
 
@@ -635,9 +672,9 @@ problema que uma regra simples não resolve, e não "IA em tudo".
 - incorporar as tabelas adicionais da Home Credit ([seção 9](#mais-tabelas-da-home-credit));
 - calibrar o score (por exemplo, `CalibratedClassifierCV`) para expor também uma probabilidade;
 - explicabilidade por cliente com SHAP;
-- armazenar as previsões em banco de dados, com identificador da solicitação;
+- migrar o registro de previsões de SQLite para um banco gerenciado (ex.: PostgreSQL) ao escalar;
 - versionar o modelo e comparar automaticamente modelo atual × candidato;
-- monitorar performance real e Data Drift, com alertas de degradação e dashboards;
+- recalcular métricas a partir dos resultados registrados e monitorar Data Drift, com alertas e dashboards;
 - autenticação na API;
 - deploy em nuvem (CD);
 - agentes de IA da [seção 16](#16-plano-de-ações-automatizadas-proposta).
