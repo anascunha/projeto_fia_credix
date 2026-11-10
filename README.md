@@ -26,10 +26,12 @@ infraestrutura em **Docker Compose**.
 O modelo identifica 2 em cada 3 inadimplentes no limiar padrão. Os números estão na
 [seção 8](#8-métricas-do-modelo).
 
-**Como rodar** (com os CSVs do Kaggle em `Dados/raw_data/`):
+**Como rodar** (depois de aceitar as regras da competição no Kaggle e autenticar com
+`kaggle auth login`):
 
 ```bash
 pip install -r requirements.txt
+python DataPipeline/00_baixar_dados.py    # baixa os CSVs do Kaggle
 python pipeline_orchestration.py          # features -> ABT -> treino
 uvicorn app.main:app --port 8000          # API em http://localhost:8000/docs
 ```
@@ -130,7 +132,9 @@ Antes de consultar o modelo, a API aplica regras para situações extremas:
 
 ## 3. Fonte dos Dados
 
-Base da competição **Home Credit Default Risk** (Kaggle):
+Base da competição **Home Credit Default Risk** do Kaggle
+([`home-credit-default-risk`](https://www.kaggle.com/competitions/home-credit-default-risk)),
+baixada por `DataPipeline/00_baixar_dados.py`:
 
 | Arquivo | Descrição |
 |---|---|
@@ -434,6 +438,7 @@ desempenho do modelo.
 | `test_regras.py` | Regras de negócio, limites das faixas e cálculo dos cortes por quantil |
 | `test_modelo.py` | O treino gera métricas, faixas ordenadas e importâncias |
 | `test_api.py` | `/health`, `/predict`, regras de negócio na API e validação da entrada (via `TestClient`) |
+| `test_baixar_dados.py` | Download dos CSVs com um cliente falso da API do Kaggle (sem rede nem token) |
 
 O workflow `.github/workflows/testes.yml` roda os testes a cada push e pull request.
 

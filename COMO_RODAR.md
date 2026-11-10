@@ -14,15 +14,29 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Baixe os CSVs da competição **Home Credit Default Risk** no Kaggle (é preciso aceitar as
-regras da competição) e coloque em:
+### Dados
+
+Os dados vêm da competição **Home Credit Default Risk** do Kaggle
+(`home-credit-default-risk`) e não são versionados no repositório. Para baixar:
+
+1. Crie uma conta no Kaggle e aceite as regras da competição em
+   https://www.kaggle.com/competitions/home-credit-default-risk/rules
+2. Autentique a API do Kaggle: `kaggle auth login` (pelo navegador) ou exporte
+   `KAGGLE_API_TOKEN` com o token gerado em https://www.kaggle.com/settings/api
+3. Rode:
+
+```bash
+python DataPipeline/00_baixar_dados.py
+```
+
+O script baixa só os dois arquivos usados pelo projeto e pula os que já existem:
 
 ```text
 Dados/raw_data/application_train.csv
 Dados/raw_data/bureau.csv
 ```
 
-Os dados não são versionados no repositório.
+Se preferir, baixe manualmente pela página da competição e coloque os CSVs nesses caminhos.
 
 ## 1. Testes (não precisam dos dados do Kaggle)
 
